@@ -1,7 +1,7 @@
 /*
- * Copyright (C) 2025 Sylvain <ton.email@exemple.com>
+ * Copyright (C) 2025 SylPaMir <sylvain.patureau.mirand@gmail.com>
  *
- * This file is part of SyD.
+ * This file is part of SyD Project.
  *
  * SyD is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -2592,6 +2592,7 @@ int main(int argc, char *argv[]) {
     
   return 0;  
 }
+
 
 
 
