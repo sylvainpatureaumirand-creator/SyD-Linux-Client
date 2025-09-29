@@ -7,6 +7,7 @@ Installation des dépendances
 Commencez par mettre à jour votre système puis installez le compilateur et les librairies nécessaires avec ces commandes :
 
 sudo apt update
+
 sudo apt install build-essential libssl-dev libgmp-dev
 
 Préparation des répertoires et fichiers de configuration
@@ -20,6 +21,7 @@ echo '{ "SAFE":"Tirelipimponsurlechihuahua!!!" }' > ./conf/Client.cfg
 Ensuite, créez les fichiers de configuration serveur ServerSYD.cfg et ServerProvider.cfg contenant les paramètres uuid, IP et PORT (le uuid est optionnel pour le Provider) :
 
 echo '{ "uuid":"c25f250d-2867-48e9-9553-1734de7c46c3", "IP":"192.168.1.224", "PORT":"443" }' > ./conf/ServerSYD.cfg
+
 echo '{ "uuid":"", "IP":"192.168.1.225", "PORT":"443" }' > ./conf/ServerProvider.cfg
 
 Compilation
