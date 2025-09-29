@@ -5,23 +5,27 @@ SyD est une application cliente sécurisée qui utilise OpenSSL et GMP pour chif
 Installation des dépendances
 
 Commencez par mettre à jour votre système puis installez le compilateur et les librairies nécessaires avec ces commandes :
+
 sudo apt update
 sudo apt install build-essential libssl-dev libgmp-dev
 
 Préparation des répertoires et fichiers de configuration
 
 Créez les dossiers de configuration et de base de données :
+
 mkdir ./conf/ ./bdd
 
 echo '{ "SAFE":"Tirelipimponsurlechihuahua!!!" }' > ./conf/Client.cfg
 
 Ensuite, créez les fichiers de configuration serveur ServerSYD.cfg et ServerProvider.cfg contenant les paramètres uuid, IP et PORT (le uuid est optionnel pour le Provider) :
+
 echo '{ "uuid":"c25f250d-2867-48e9-9553-1734de7c46c3", "IP":"192.168.1.224", "PORT":"443" }' > ./conf/ServerSYD.cfg
 echo '{ "uuid":"", "IP":"192.168.1.225", "PORT":"443" }' > ./conf/ServerProvider.cfg
 
 Compilation
 
 Compilez le client avec les options de compilation sécurisées suivantes :
+
 gcc -Wall -Wextra -Werror -Wformat -Wformat-security -fstack-protector-strong -fPIE -D_FORTIFY_SOURCE=2 Linux-client-v0.7.c -o SyD -lssl -lcrypto -lgmp
 
 Validation mémoire avec Valgrind
