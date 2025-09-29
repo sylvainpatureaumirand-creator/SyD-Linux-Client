@@ -33,15 +33,20 @@ gcc -Wall -Wextra -Werror -Wformat -Wformat-security -fstack-protector-strong -f
 Validation mémoire avec Valgrind
 
 Pour vérifier l’absence de fuites mémoire, exécutez les tests suivants selon les différentes options du client. Les logs seront enregistrés dans un fichier texte.
+
 valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.7.txt ./SyD -i
+
 valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.7.txt ./SyD -s
+
 valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.7.txt ./SyD -a ./Testv0.7.syd
+
 valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.7.txt ./SyD -c ./Testv0.7.syd log.debug
+
 valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.7.txt ./SyD -u ./Testv0.7.syd .
 
 Licence
 
 Ce projet est distribué sous licence GNU GPL v3
-Contact
 
-Développé par Sylvain Pour toute question ou contribution : sylvain.patureau.mirand@gmail.com
+
+Pour toute question ou contribution : sylvain.patureau.mirand@gmail.com
