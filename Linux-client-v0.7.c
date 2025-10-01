@@ -1,24 +1,6 @@
 /*
- * Copyright (C) 2025 SylPaMir <sylvain.patureau.mirand@gmail.com>
- *
- * This file is part of SyD Project.
- *
- * SyD is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * SyD is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with SyD.  If not, see <https://www.gnu.org/licenses/>.
-*/ 
 
-/*
-#Installer les librairies et le compilateur sur Debian
+#Installer les librairies et le compilateur
 sudo apt update
 sudo apt install build-essential libssl-dev libgmp-dev
 
@@ -32,14 +14,14 @@ echo "{ \n \"uuid\":\"c25f250d-2867-48e9-9553-1734de7c46c3\",\n  \"IP\":\"192.16
 echo "{ \n \"uuid\":\"\",\n  \"IP\":\"192.168.1.225\",\n  \"PORT\":\"443\",}"  ./conf/ServerProvider.cfg 
 
 #Compilation
-gcc -Wall -Wextra -Werror -Wformat -Wformat-security -fstack-protector-strong -fPIE -D_FORTIFY_SOURCE=2 Linux-client-v0.7.c -o SyD -lssl -lcrypto -lgmp 
+gcc -Wall -Wextra -Werror -Wformat -Wformat-security -fstack-protector-strong -fPIE -D_FORTIFY_SOURCE=2 Linux-client-v0.8.c -o SyD -lssl -lcrypto -lgmp 
 
 #Validation de la conformité mémoire
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.7.txt ./SyD -i
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.7.txt ./SyD -s
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.7.txt ./SyD -a ./Testv0.7.syd
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.7.txt ./SyD -c ./Testv0.7.syd log.debug
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.7.txt ./SyD -u ./Testv0.7.syd .
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.8.txt ./SyD -i
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.8.txt ./SyD -s
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.8.txt ./SyD -a ./Testv0.8.syd
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.8.txt ./SyD -c ./Testv0.8.syd log.debug
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.8.txt ./SyD -u ./Testv0.8.syd .
 */
 
 //------------------------------------------------------------------------------//
@@ -72,6 +54,10 @@ valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-fi
 #define SIZE_X 256 //Max 512 char (dépend du SYD et du SP)
 #define SIZE_P 512 //Max 2485 char (dépend du SYD et du SP)
 #define SIZE_BUFFER 16500 // Valeur Max 16384 traitées
+
+//------------------------------------------------------------------------------//
+// chemin de la CA des serveurs du SyD
+char *CA_CERT_PATH="conf/SYD-rootCA-PP.pem";
 
 //------------------------------------------------------------------------------//
 // Declaration des structures
@@ -595,20 +581,64 @@ void Free_json_values(struct JsonValues *jvals) {
 void Send_post(const char *conn_srv, const char *conn_port, const char *url, const char *json_data) {
     SSL_CTX *ctx;
     BIO *bio;
+    SSL *ssl;
 
     // Initialisation OpenSSL
     SSL_library_init();
+    OpenSSL_add_all_algorithms();
+    SSL_load_error_strings();
+
     ctx = SSL_CTX_new(TLS_client_method());
+    if (!ctx) {
+        Write_log(LOG_FILE, "Send_post:31:SSL_CLIENT_METHOD_ERROR");
+        return;
+    }
+
+    // Charger le certificat racine
+    if (!SSL_CTX_load_verify_locations(ctx, CA_CERT_PATH, NULL)) {
+        Write_log(LOG_FILE, "Send_post:32:SSL_CA_LOADING_ERROR");
+        SSL_CTX_free(ctx);
+        return;
+    }
+
+    // Activer la vérification du certificat serveur
+    SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, NULL);
+
     bio = BIO_new_ssl_connect(ctx);
-    char conn_params[256];  // Taille suffisante pour contenir l'adresse complète
+    if (!bio) {
+      Write_log(LOG_FILE, "Send_post:33:SSL_CREATE_NEW_BIO_ERROR");
+        SSL_CTX_free(ctx);
+        return;
+    }
+
+    char conn_params[256];
     snprintf(conn_params, sizeof(conn_params), "%s:%s", conn_srv, conn_port);
-
     BIO_set_conn_hostname(bio, conn_params);
-    BIO_do_connect(bio);
-    BIO_do_handshake(bio);
 
-    // Construction de la requête HTTP
-    char request[MAX_HTTP_RQST_SIZE];// attention limite la taille de la requete envoyée au serveur ne doit pas depasser MAX_HTTP_RQST_SIZE 1024 caratères
+    BIO_get_ssl(bio, &ssl);
+    SSL_set_mode(ssl, SSL_MODE_AUTO_RETRY);
+
+    if (BIO_do_connect(bio) <= 0 || BIO_do_handshake(bio) <= 0) {
+        Write_log(LOG_FILE, "Send_post:34:SSL_HANDSHAKE_ERROR");
+        fprintf(stderr, "Erreur de connexion ou handshake\n");
+        BIO_free_all(bio);
+        SSL_CTX_free(ctx);
+        return;
+    }
+
+    // Vérification du certificat serveur
+    long verify_result = SSL_get_verify_result(ssl);
+    if (verify_result != X509_V_OK) {
+        Write_log(LOG_FILE, "Send_post:35:SSL_INVALID_SERVER_CERT");
+        fprintf(stderr, "Certificat serveur invalide : %s\n",
+                X509_verify_cert_error_string(verify_result));
+        BIO_free_all(bio);
+        SSL_CTX_free(ctx);
+        return;
+    }
+
+    // Construction et envoi de la requête HTTP
+    char request[MAX_HTTP_RQST_SIZE];
     snprintf(request, sizeof(request),
              "POST %s HTTP/1.1\r\n"
              "Host: %s\r\n"
@@ -619,15 +649,17 @@ void Send_post(const char *conn_srv, const char *conn_port, const char *url, con
 
     BIO_write(bio, request, strlen(request));
 
-    // Lecture de la reponse HTTP
     int len = BIO_read(bio, HTTP_RESPONSE, sizeof(HTTP_RESPONSE) - 1);
     if (len > 0) {
-        HTTP_RESPONSE[len] = '\0';  // Terminer la chaîne
+        HTTP_RESPONSE[len] = '\0';
     }
-    // Nettoyage
+
+    if (DEBUG == 1) {
+        printf(" |Send_post| HTTP_RESPONSE : %s \n", HTTP_RESPONSE);
+    }
+
     BIO_free_all(bio);
-    SSL_CTX_free(ctx);  
-    if (DEBUG == 1){printf(" |Send_post| HTTP_RESPONSE : %s \n", HTTP_RESPONSE);}
+    SSL_CTX_free(ctx);
 }
 
 //------------------------------------------------------------------------------//
@@ -636,20 +668,20 @@ void Send_post(const char *conn_srv, const char *conn_port, const char *url, con
 int sha256(const char *str, unsigned char hash[SHA256_DIGEST_LENGTH]) {
     EVP_MD_CTX *ctx = EVP_MD_CTX_new();
     if (!ctx) {
-        fprintf(stderr, "Erreur : échec de lallocation du contexte EVP_MD_CTX.\n");
+        Write_log(LOG_FILE, "sha256:22:EVP_ERROR ALLOC EVP_MD_CTX");
         return 1;
     }
 
     // Initialisation du contexte SHA256
     if (EVP_DigestInit_ex(ctx, EVP_sha256(), NULL) != 1) {
-        fprintf(stderr, "Erreur : échec de linitialisation EVP SHA256.\n");
+        Write_log(LOG_FILE, "sha256:22:EVP_ERROR initialisation EVP SHA256");
         EVP_MD_CTX_free(ctx);
         return 1;
     }
 
     // Ajout des données à hacher
     if (EVP_DigestUpdate(ctx, str, strlen(str)) != 1) {
-        fprintf(stderr, "Erreur : échec de lajout des données à EVP SHA256.\n");
+        Write_log(LOG_FILE, "sha256:22:EVP_ERROR add data to EVP SHA256");
         EVP_MD_CTX_free(ctx);
         return 1;
     }
@@ -658,7 +690,7 @@ int sha256(const char *str, unsigned char hash[SHA256_DIGEST_LENGTH]) {
 
     // Finalisation du hachage
     if (EVP_DigestFinal_ex(ctx, hash, &hash_len) != 1 || hash_len != SHA256_DIGEST_LENGTH) {
-        fprintf(stderr, "Erreur : échec de la finalisation EVP SHA256.\n");
+        Write_log(LOG_FILE, "sha256:22:EVP_ERROR finalized EVP SHA256");
         EVP_MD_CTX_free(ctx);
         return 1;
     }
@@ -739,7 +771,7 @@ char *encrypt_file_AES_GCM_base64(const char *filepath, const unsigned char *key
                                   const unsigned char *iv,  char *hash_tag) {
     FILE *file = fopen(filepath, "rb");
     if (!file) {
-        fprintf(stderr, "? Impossible d'ouvrir le fichier : %s\n", filepath);
+        Write_log(LOG_FILE, "encrypt_file_AES_GCM_base64:10:FILE_NOT_FOUND");
         return NULL;
     }
 
@@ -749,14 +781,14 @@ char *encrypt_file_AES_GCM_base64(const char *filepath, const unsigned char *key
 
     if (filesize <= 0 || filesize > MAX_FILES_SIZE) { // if (filesize <= 0 || filesize > 50 * 1024 * 1024) { Limite de 50 Mo
         fclose(file);
-        fprintf(stderr, "Taille de fichier invalide ou trop grande.\n");
+        Write_log(LOG_FILE, "encrypt_file_AES_GCM_base64:16:FILE_OVERSIZED");
         return NULL;
     }
 
     unsigned char *plaintext = malloc(filesize);
     if (!plaintext) {
         fclose(file);
-        fprintf(stderr, "Erreur d'allocation mémoire.\n");
+        Write_log(LOG_FILE, "encrypt_file_AES_GCM_base64:12:MEMORY_ALLOC_ERROR");
         return NULL;
     }
 
@@ -2546,39 +2578,38 @@ int main(int argc, char *argv[]) {
     if ( ret_select_usage == 0 ){
       Usage(PROGARGS.values[0]);
     } else if (ret_select_usage == 1) {
-      printf(" Creation d'un SyD \n");
       int ret_AskNewService = SYD_AskNewService();
       if ( ret_AskNewService != 0) {
-                printf("Erreur de creation de TANK %d\n", ret_AskNewService);
+                printf("Erreur de creation de TANK (%d)\n", ret_AskNewService);
       }
 
     } else if (ret_select_usage == 2) {
       int ret_open_syd = SYD_OpenSYD();
       if ( ret_open_syd != 0) {
-                  printf("Erreur d'ouverture du SyD %d\n", ret_open_syd);
+                  printf("Erreur d'ouverture du SyD (%d)\n", ret_open_syd);
       }
 
     } else if (ret_select_usage == 3) {
       int ret_close_syd = SYD_CloseSYD();
       if ( ret_close_syd != 0) {                 
-                  printf("Erreur d'enregistrement du SyD %d\n", ret_close_syd);
+                  printf("Erreur d'enregistrement du SyD (%d)\n", ret_close_syd);
       }
 
     } else if (ret_select_usage == 4) {
       int ret_enrol_client = SYD_EnrollClient();
       if ( ret_enrol_client != 0) {
-                  printf("Erreur d'enrolement %d\n", ret_enrol_client);
+                  printf("Erreur d'enrolement code (%d)\n", ret_enrol_client);
       }
 
     } else if (ret_select_usage == 5) {
       int ret_subs_client = SYD_SubscribeService();
       if ( ret_subs_client == 201 ) {
-            printf("Souscription effectuee retour code %d\n", ret_subs_client);
+            printf("Souscription effectuee (%d)\n", ret_subs_client);
             
       } else if (ret_subs_client == 200 ) { 
-            printf("Souscription deja effectuee retour code %d\n", ret_subs_client);
+            printf("Souscription deja effectuee (%d)\n", ret_subs_client);
       } else {
-             printf("Erreur de souscription code %d\n", ret_subs_client);
+             printf("Erreur de souscription code (%d)\n", ret_subs_client);
       }
 
     }
@@ -2592,7 +2623,5 @@ int main(int argc, char *argv[]) {
     
   return 0;  
 }
-
-
 
 
