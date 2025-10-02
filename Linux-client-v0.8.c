@@ -17,6 +17,7 @@
 */ 
 
 /*
+
 #Installer les librairies et le compilateur
 sudo apt update
 sudo apt install build-essential libssl-dev libgmp-dev
@@ -74,7 +75,8 @@ valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-fi
 
 //------------------------------------------------------------------------------//
 // chemin de la CA des serveurs du SyD
-char *CA_CERT_PATH="conf/SYD-rootCA-PP.pem";
+char *CA_CERT="SYD-rootCA-PP.pem";
+char CA_CERT_PATH[MAX_FILENAME_LEN];
 
 //------------------------------------------------------------------------------//
 // Declaration des structures
@@ -195,7 +197,7 @@ char TAG[64];
 //-----------------------------DEBUG-ON-----------------------------------------//
 //------------------------------------------------------------------------------// 
 // Activation du mode Debug Off=0 On=1 
-int DEBUG = 0;
+int DEBUG = 1;
 
 //------------------------------------------------------------------------------// 
 // Debug Fonction pour afficher les valeurs de configuration 
@@ -2546,6 +2548,8 @@ int main(int argc, char *argv[]) {
     if ( DEBUG == 1) { printf(" |Main| Chemin absolu BDD : %s\n", BDD_PATH);}
     snprintf(CONFIG_PATH, MAX_FILENAME_LEN, "%s%s", DIR_PATH, CONFIG_DIR);
     if ( DEBUG == 1) { printf(" |Main| Chemin absolu CONF : %s\n", CONFIG_PATH);}
+    snprintf(CA_CERT_PATH, MAX_FILENAME_LEN, "%s%s%s", DIR_PATH, CONFIG_DIR, CA_CERT);
+    if ( DEBUG == 1) { printf(" |Main| Chemin absolu CA_CERT : %s\n", CA_CERT_PATH);}
 
 // Initialiser les structures
     struct ProgParams PROGARGS;
@@ -2640,6 +2644,5 @@ int main(int argc, char *argv[]) {
     
   return 0;  
 }
-
 
 
