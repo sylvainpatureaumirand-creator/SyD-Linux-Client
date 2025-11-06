@@ -2508,7 +2508,7 @@ int SYD_CloseSYD() {
               const char *basename = strrchr(fullpath, '/');
               basename = (basename != NULL) ? basename + 1 : fullpath;
               if (DEBUG == 1) { printf(" |Select_usage| basename %s\n", basename);}
-              snprintf(FILENAME, sizeof(FILENAME), "%s", basename);
+              sprintf(FILENAME, "%s", basename);
         
         Write_CloseSYD(SYDFILE, FILENAME ,encrypted_base64);
         
@@ -2644,5 +2644,6 @@ int main(int argc, char *argv[]) {
     
   return 0;  
 }
+
 
 
