@@ -30,21 +30,21 @@ Compilation
 
 Compilez le client avec les options de compilation sécurisées suivantes :
 
-gcc -Wall -Wextra -Werror -Wformat -Wformat-security -fstack-protector-strong -fPIE -D_FORTIFY_SOURCE=2 Linux-client-v0.8.c -o SyD -lssl -lcrypto -lgmp
+gcc -Wall -Wextra -Werror -Wformat -Wformat-security -fstack-protector-strong -fPIE -D_FORTIFY_SOURCE=2 Linux-client-v0.9.c -o SyD -lssl -lcrypto -lgmp
 
 Validation mémoire avec Valgrind
 
 Pour vérifier l’absence de fuites mémoire, exécutez les tests suivants selon les différentes options du client. Les logs seront enregistrés dans un fichier texte.
 
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.8.txt ./SyD -i
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.9.txt ./SyD -i
 
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.8.txt ./SyD -s
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.9.txt ./SyD -s
 
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.8.txt ./SyD -a ./Testv0.8.syd
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.9.txt ./SyD -a ./Testv0.9.syd
 
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.8.txt ./SyD -c ./Testv0.8.syd log.debug
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.9.txt ./SyD -c ./Testv0.9.syd log.debug
 
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.8.txt ./SyD -u ./Testv0.8.syd .
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.9.txt ./SyD -u ./Testv0.9.syd .
 
 Licence
 
