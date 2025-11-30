@@ -1,4 +1,4 @@
-SyD - Client Linux v0.8
+SyD - Client Linux v0.9
 
 SyD est une application cliente sécurisée qui utilise OpenSSL et GMP pour chiffrer localement les données. Ce guide vous accompagne dans l’installation des dépendances, la configuration, la compilation et la validation mémoire sur une distribution Debian.
 
