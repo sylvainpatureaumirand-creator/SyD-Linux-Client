@@ -364,6 +364,7 @@ int Presence_Ref(const char *filename) {
     
         FILE *file = fopen(filename, "r");
     if (file) {
+        close(file);
         return 0; // le fichier existe
     } else { 
         return 10; // le fichier n'existe pas
@@ -2644,5 +2645,6 @@ int main(int argc, char *argv[]) {
     
   return 0;  
 }
+
 
 
