@@ -20,9 +20,9 @@ echo '{ "SAFE":"Tirelipimponsurlechihuahua!!!" }' > ./conf/Client.cfg
 
 Ensuite, créez les fichiers de configuration serveur ServerSYD.cfg et ServerProvider.cfg contenant les paramètres uuid, IP et PORT (le uuid est optionnel pour le Provider) :
 
-echo '{ "uuid":"c25f250d-2867-48e9-9553-1734de7c46c3", "IP":"192.168.1.224", "PORT":"443" }' > ./conf/ServerSYD.cfg
+echo '{ "uuid":"c25f250d-2867-48e9-9553-1734de7c46c3", "IP":"82.67.97.63", "PORT":"5110" }' > ./conf/ServerSYD.cfg
 
-echo '{ "uuid":"", "IP":"192.168.1.225", "PORT":"443" }' > ./conf/ServerProvider.cfg
+echo '{ "uuid":"", "IP":"82.67.97.63", "PORT":"5120" }' > ./conf/ServerProvider.cfg
 
 Ajoutez le certificat de l'autorité racine des serveurs dans conf/SYD-rootCA-PP.pem
 
