@@ -16,7 +16,7 @@ Créez les dossiers de configuration et de base de données :
 
 mkdir ./conf/ ./bdd
 
-echo '{ "SAFE":"Tirelipimponsurlechihuahua!!!" }' > ./conf/Client.cfg
+echo '{ "SAFE":"JemetsLEmotdepassequivaêtresuperduradéchiffrer!!!" }' > ./conf/Client.cfg
 
 Ensuite, créez les fichiers de configuration serveur ServerSYD.cfg et ServerProvider.cfg contenant les paramètres uuid, IP et PORT (le uuid est optionnel pour le Provider) :
 
