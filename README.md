@@ -20,6 +20,8 @@ echo '{ "SAFE":"JemetsLAclefquivaêtresuperduraretenir!!!" }' > ./conf/Client.cf
 
 Ensuite, créez les fichiers de configuration serveur ServerSYD.cfg et ServerProvider.cfg contenant les paramètres uuid, IP et PORT (le uuid est optionnel pour le Provider) :
 
+Pour utiliser mes serveurs de préproduction :
+
 echo '{ "uuid":"853896a6-5ddb-4d0b-9516-52fc46cbe9b6", "IP":"82.67.97.63", "PORT":"5110" }' > ./conf/ServerSYD.cfg
 
 echo '{ "uuid":"", "IP":"82.67.97.63", "PORT":"5120" }' > ./conf/ServerProvider.cfg
