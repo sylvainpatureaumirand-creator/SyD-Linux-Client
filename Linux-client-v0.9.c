@@ -32,14 +32,14 @@ echo "{ \n \"uuid\":\"c25f250d-2867-48e9-9553-1734de7c46c3\",\n  \"IP\":\"192.16
 echo "{ \n \"uuid\":\"\",\n  \"IP\":\"192.168.1.225\",\n  \"PORT\":\"443\",}"  ./conf/ServerProvider.cfg 
 
 #Compilation
-gcc -Wall -Wextra -Werror -Wformat -Wformat-security -fstack-protector-strong -fPIE -D_FORTIFY_SOURCE=2 Linux-client-v0.8.c -o SyD -lssl -lcrypto -lgmp 
+gcc -Wall -Wextra -Werror -Wformat -Wformat-security -fstack-protector-strong -fPIE -D_FORTIFY_SOURCE=2 Linux-client-v0.92.c -o SyD-Full -lssl -lcrypto -lgmp 
 
 #Validation de la conformité mémoire
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.8.txt ./SyD -i
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.8.txt ./SyD -s
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.8.txt ./SyD -a ./Testv0.8.syd
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.8.txt ./SyD -c ./Testv0.8.syd log.debug
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.8.txt ./SyD -u ./Testv0.8.syd .
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.91.txt ./SyD -i
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.92.txt ./SyD -s
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.92.txt ./SyD -a ./Testv0.92.syd
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.92.txt ./SyD -c ./Testv0.92.syd log.debug
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.92.txt ./SyD -u ./Testv0.92.syd .
 */
 
 //------------------------------------------------------------------------------//
@@ -57,13 +57,14 @@ valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-fi
 #include <openssl/sha.h>
 #include <openssl/ssl.h>
 #include <gmp.h>
+#include <time.h>
 
 // Définition globales
 #define MAX_FILES 100
 #define MAX_FILENAME_LEN 260
 #define MAX_FILENAME_PATH_LEN 520
-#define MAX_FILES_SIZE 52428800 // fixe la taille des archives .syd traitées
-#define MAX_FILES_SIZE_30P 68157440 // fixe la taille du buffer pour traiter les archives
+#define MAX_FILES_SIZE 209715200 // fixe la taille des archives .syd traitées
+#define MAX_FILES_SIZE_30P 272629760 // fixe la taille du buffer pour traiter les archives
 #define MAX_HTTP_RQST_SIZE 1024
 
 // définition des tailles de valeur des variables
@@ -197,7 +198,7 @@ char TAG[64];
 //-----------------------------DEBUG-ON-----------------------------------------//
 //------------------------------------------------------------------------------// 
 // Activation du mode Debug Off=0 On=1 
-int DEBUG = 1;
+int DEBUG = 0;
 
 //------------------------------------------------------------------------------// 
 // Debug Fonction pour afficher les valeurs de configuration 
@@ -222,9 +223,9 @@ printf("------------------------------------------------------------------\n");
     printf(" |Display_SYD| B: %s\n", SYDVALS->B);
     printf(" |Display_SYD| State: %s\n", SYDVALS->state);   
     if ( SYDVALS->argnumber > 0) {
-      printf(" |Display_SYD| argnumber: %ld\n", SYDVALS->argnumber); 
+      printf(" |Display_SYD| argnumber: %zu\n", SYDVALS->argnumber); 
       for (size_t i = 0; i < SYDVALS->argnumber; i++) { 
-      printf(" |Display_SYD| argvalue[%ld]: %s\n", i, SYDVALS->argvalue[i]);
+      printf(" |Display_SYD| argvalue[%zu]: %s\n", i, SYDVALS->argvalue[i]);
       } 
     }
 }
@@ -323,7 +324,7 @@ int Match_regex(const char *string, const char *pattern) {
         return 0;  // Aucune correspondance
     } else {
         char msgbuf[100];
-        memset(msgbuf, '\0', sizeof(100));
+        memset(msgbuf, '\0', sizeof(msgbuf));
         regerror(testregex, &regex, msgbuf, sizeof(msgbuf));
             if (DEBUG == 1) {
               printf(" |Match Regex| Erreur de correspondance de l'expression reguliere : %s ", msgbuf);
@@ -332,7 +333,7 @@ int Match_regex(const char *string, const char *pattern) {
         memset(regexerror, '\0', sizeof(regexerror)); 
         sprintf(regexerror, "Regex generic error:%s", msgbuf);
         Write_log(LOG_FILE, regexerror); 
-        memset(msgbuf, '\0', sizeof(100));
+        memset(msgbuf, '\0', sizeof(msgbuf));
         return 558;
     }
     // remise a 0 du debut de la chaine de caractère
@@ -364,7 +365,7 @@ int Presence_Ref(const char *filename) {
     
         FILE *file = fopen(filename, "r");
     if (file) {
-        close(file);
+        fclose(file);
         return 0; // le fichier existe
     } else { 
         return 10; // le fichier n'existe pas
@@ -394,11 +395,11 @@ int Select_usage (struct ProgParams *PROGARGS) {
   snprintf(NOM, sizeof(NOM), "%s", PROGARGS->values[0]);
   NOM[sizeof(NOM) - 1] = '\0';
   if (DEBUG == 1) { printf("------------------------------------------------------------------\n");}
-  if (DEBUG == 1) { printf(" |Select_usage| PROGARGS->entry_number : %ld\n", PROGARGS->entry_number);}
+  if (DEBUG == 1) { printf(" |Select_usage| PROGARGS->entry_number : %zu\n", PROGARGS->entry_number);}
 
 
   if ( PROGARGS->entry_number < 2) {
-    if (DEBUG == 1) { printf(" |Select_usage| PROGARGS->entry_number : %ld < 2\n", PROGARGS->entry_number);}
+    if (DEBUG == 1) { printf(" |Select_usage| PROGARGS->entry_number : %zu < 2\n", PROGARGS->entry_number);}
     ARGFCT = 0;
   } else {
   for (size_t i = 0; i < PROGARGS->entry_number; i++) {
@@ -428,10 +429,10 @@ int Select_usage (struct ProgParams *PROGARGS) {
               if (DEBUG == 1) { printf(" |Select_usage| FCT = -a & SyDFile = %s\n", SYDFILE);}    
 
           } else if (ARGFCT == 1 && i > 2 && i < 6) {
-              if (DEBUG == 1) { printf(" |Select_usage| FCT = -a & arg[%ld] = %s\n", i, PROGARGS->values[2]);}
+              if (DEBUG == 1) { printf(" |Select_usage| FCT = -a & arg[%zu] = %s\n", i, PROGARGS->values[2]);}
               if (Match_regex(PROGARGS->values[3], REGEX_UUID) == 1) {
                 snprintf(LIST_UUID[j], sizeof(LIST_UUID), "%s", PROGARGS->values[i]);
-                if (DEBUG == 1) { printf(" |Select_usage| UUID[%ld] %s\n", j, LIST_UUID[j]);}
+                if (DEBUG == 1) { printf(" |Select_usage| UUID[%zu] %s\n", j, LIST_UUID[j]);}
                 j++;
               } 
               
@@ -489,10 +490,10 @@ int Select_usage (struct ProgParams *PROGARGS) {
 
   if (DEBUG == 1) { 
     printf("------------------------------------------------------------------\n");
-    printf(" |Select_usage| Nb Argument : %ld\n", PROGARGS->entry_number);
+    printf(" |Select_usage| Nb Argument : %zu\n", PROGARGS->entry_number);
     printf(" |Select_usage| ArgFct : %d\n", ARGFCT);
     for (size_t i = 0; i < PROGARGS->entry_number; i++) {
-      printf(" |Select_usage| ProgArgs_EntryNumber i : %ld\n", i);
+      printf(" |Select_usage| ProgArgs_EntryNumber i : %zu\n", i);
       printf(" |Select_usage| ProgArgs_values |%s|\n", PROGARGS->values[i]);   
     }
   }
@@ -799,7 +800,7 @@ char *encrypt_file_AES_GCM_base64(const char *filepath, const unsigned char *key
     long filesize = ftell(file);
     fseek(file, 0, SEEK_SET);
 
-    if (filesize <= 0 || filesize > MAX_FILES_SIZE) { // if (filesize <= 0 || filesize > 50 * 1024 * 1024) { Limite de 50 Mo
+    if (filesize <= 0 || filesize > MAX_FILES_SIZE) { // if (filesize <= 0 || filesize > 50 * 1024 * 1024) { Limite de X Mo
         fclose(file);
         Write_log(LOG_FILE, "encrypt_file_AES_GCM_base64:16:FILE_OVERSIZED");
         return NULL;
@@ -1048,7 +1049,7 @@ int Read_json(const char *filename, struct JsonValues *jvals) {
             jvals->entry_count++;
         }
     }
-    // printf("Debug Read_json : entry_count %ld\n", jvals->entry_count); 
+    // printf("Debug Read_json : entry_count %zu\n", jvals->entry_count); 
     jvals->entries = malloc(jvals->entry_count * sizeof(struct JsonEntry));
     if (!jvals->entries) {
         Write_log(LOG_FILE, "READ-JSON:500:Allocation memory error");
@@ -1220,7 +1221,7 @@ int Detect_error(const char* text) {
 void Transfer_Server_Conf(const struct JsonValues *jvals, struct ServerConf *srv_params) {
 
     for (size_t i = 0; i < jvals->entry_count; i++) {
-            if (DEBUG == 1) {printf(" |Transfer_Server_Conf| i : %ld/%ld|\n", i, jvals->entry_count);
+            if (DEBUG == 1) {printf(" |Transfer_Server_Conf| i : %zu/%zu|\n", i, jvals->entry_count);
                 printf(" |Transfer_Server_Conf| Key : %s|\n", jvals->entries[i].key);
             }   
         if (strcmp(jvals->entries[i].key, "uuid") == 0) {
@@ -1288,7 +1289,7 @@ int Read_config_client(const char *filename) {
       if (DEBUG == 1) { Display_json(&jvals); }
 
         for (size_t i = 0; i < jvals.entry_count; i++) {
-            if (DEBUG == 1) {printf(" |Read_config_client| i : %ld/%ld|\n", i, jvals.entry_count);
+            if (DEBUG == 1) {printf(" |Read_config_client| i : %zu/%zu|\n", i, jvals.entry_count);
                 printf(" |Read_config_client| Key : %s|\n", jvals.entries[i].key);
             }   
         if (strcmp(jvals.entries[i].key, "SAFE") == 0) {
@@ -1297,7 +1298,7 @@ int Read_config_client(const char *filename) {
             snprintf(CLIENTKEY, longueurSAFE, "%s", jvals.entries[i].value);
             } else {
             snprintf(CLIENTKEY, 1023, "%s", jvals.entries[i].value);
-            CLIENTKEY[1024] = '\0';
+            CLIENTKEY[1023] = '\0';
             }
             
               if (DEBUG == 1) {printf(" |Read_config_client| SAFE: %s|\n", CLIENTKEY);}
@@ -1331,7 +1332,7 @@ int Read_uuid_client(const char *filename) {
     if (DEBUG == 1) { Display_json(&jvals); }
     for (size_t i = 0; i < jvals.entry_count; i++) {
         if (DEBUG == 1) {
-            printf(" |Read_config_client| i : %ld/%ld|\n", i, jvals.entry_count);
+            printf(" |Read_config_client| i : %zu/%zu|\n", i, jvals.entry_count);
             printf(" |Read_config_client| Key : %s|\n", jvals.entries[i].key);
         }   
         if (strcmp(jvals.entries[i].key, "UUID") == 0) {
@@ -1379,7 +1380,7 @@ int Read_reply() {
         
         // lecture des valeurs jvals de X P et TAG
         for (size_t i = 0; i < jvals.entry_count; i++) {
-            if (DEBUG == 1) {printf(" |Transfert_SYD_values| i : %ld/%ld|\n", i, jvals.entry_count);
+            if (DEBUG == 1) {printf(" |Transfert_SYD_values| i : %zu/%zu|\n", i, jvals.entry_count);
                 printf(" |Transfert_SYD_values| Key : %s|\n", jvals.entries[i].key);
             }   
          if (strcmp(jvals.entries[i].key, "UUID") == 0) {
@@ -1644,7 +1645,7 @@ void Parsing_SYD_user(char *data) {
     for (size_t i = 0; i < line_count; i++) {
         if (DEBUG == 1) { 
             printf("------------------------------------------------------------------\n");
-            printf(" |Parsing_SYD_user| Ligne %ld :\n", i + 1); 
+            printf(" |Parsing_SYD_user| Ligne %zu :\n", i + 1); 
         }
                 int check = 0;
                 check = Check_uuid_in_bdd(SYD_BDD, fields[i][1]);
@@ -1697,17 +1698,19 @@ int Read_SYD_USER(const char *filename) {
 
         // lecture des valeurs jvals de X P et TAG
         for (size_t i = 0; i < jvals.entry_count; i++) {
-            if (DEBUG == 1) {printf(" |Read_SYD_USER| i : %ld/%ld|\n", i, jvals.entry_count);
+            if (DEBUG == 1) {printf(" |Read_SYD_USER| i : %zu/%zu|\n", i, jvals.entry_count);
                 printf(" |Read_SYD_USER| Key : %s|\n", jvals.entries[i].key);
             }   
          if (strcmp(jvals.entries[i].key, "SYD") == 0) {
-              size_t longueuruuid = strlen(jvals.entries[i].value) + 1;               // Taille de la chaine de caractere              
-              snprintf(SYD_UUID, longueuruuid, "%s", jvals.entries[i].value);
+              //size_t longueuruuid = strlen(jvals.entries[i].value) + 1;               // Taille de la chaine de caractere
+                //vérification de la longueur (si longueuruuid < sizeof(srv_params->uuid))         
+              //snprintf(SYD_UUID, longueuruuid, "%s", jvals.entries[i].value);
+              snprintf(SYD_UUID, sizeof(SYD_UUID), "%s", jvals.entries[i].value);
               if (DEBUG == 1) {printf(" |Read_SYD_USER| UUID: %s|\n", SYD_UUID);}   
         } else if (strcmp(jvals.entries[i].key, "USER") == 0) {
-              size_t longueuruser = strlen(jvals.entries[i].value) + 1;               // Taille de la chaine de caractere              
-              snprintf(user, longueuruser, "%s", jvals.entries[i].value);
-              snprintf(USERS, longueuruser, "%s", jvals.entries[i].value);
+              //size_t longueuruser = strlen(jvals.entries[i].value) + 1;               // Taille de la chaine de caractere              
+              snprintf(user, sizeof(user), "%s", jvals.entries[i].value);
+              snprintf(USERS, sizeof(USERS), "%s", jvals.entries[i].value);
               if (DEBUG == 1) {printf(" |Read_SYD_USER| USER: %s|\n", user);}   
         } 
         }
@@ -1757,19 +1760,22 @@ int Read_SYD_DATA(const char *filename) {
 
         // lecture des valeurs jvals de DATA, FILENAME et TAG
         for (size_t i = 0; i < jvals.entry_count; i++) {
-            if (DEBUG == 1) {printf(" |Read_SYD_DATA| i : %ld/%ld|\n", i, jvals.entry_count);
+            if (DEBUG == 1) {printf(" |Read_SYD_DATA| i : %zu/%zu|\n", i, jvals.entry_count);
                 printf(" |Read_SYD_DATA| Key : %s|\n", jvals.entries[i].key);
             }   
          if (strcmp(jvals.entries[i].key, "DATA") == 0) {
-              size_t longueurDATA = strlen(jvals.entries[i].value) + 1;               // Taille de la chaine de caractere              
-              snprintf(DATA, longueurDATA, "%s", jvals.entries[i].value);   
+              //size_t longueurDATA = strlen(jvals.entries[i].value) + 1;               // Taille de la chaine de caractere              
+              //snprintf(DATA, longueurDATA, "%s", jvals.entries[i].value);
+              snprintf(DATA, sizeof(DATA), "%s", jvals.entries[i].value);   
         } else if (strcmp(jvals.entries[i].key, "TAG") == 0) {
-              size_t longueurTAG = strlen(jvals.entries[i].value) + 1;               // Taille de la chaine de caractere              
-              snprintf(TAG, longueurTAG, "%s", jvals.entries[i].value);
+              //size_t longueurTAG = strlen(jvals.entries[i].value) + 1;               // Taille de la chaine de caractere              
+              //snprintf(TAG, longueurTAG, "%s", jvals.entries[i].value);
+              snprintf(TAG, sizeof(TAG), "%s", jvals.entries[i].value);
               if (DEBUG == 1) {printf(" |Read_SYD_DATA| TAG: %s|\n", TAG);}   
         } else if (strcmp(jvals.entries[i].key, "FILENAME") == 0) {
-              size_t longueurFILENAME = strlen(jvals.entries[i].value) + 1;               // Taille de la chaine de caractere              
-              snprintf(FILENAME, longueurFILENAME, "%s", jvals.entries[i].value);
+              //size_t longueurFILENAME = strlen(jvals.entries[i].value) + 1;               // Taille de la chaine de caractere              
+              //snprintf(FILENAME, longueurFILENAME, "%s", jvals.entries[i].value);
+              snprintf(FILENAME, sizeof(FILENAME), "%s", jvals.entries[i].value);
               if (DEBUG == 1) {printf(" |Read_SYD_DATA| FILENAME: %s|\n", FILENAME);}   
         }
         }
@@ -2645,6 +2651,5 @@ int main(int argc, char *argv[]) {
     
   return 0;  
 }
-
 
 
