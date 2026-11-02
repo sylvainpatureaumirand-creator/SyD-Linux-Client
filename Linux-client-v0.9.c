@@ -28,18 +28,22 @@ mkdir ./conf/ ./bdd
 #Créer un fichier Client.cfg avec une balise SAFE qui contient une chaine de caractère qui sert a chiffrer la BDD locale
 echo "{ \n \"SAFE\":\"Tirelipimponsurlechihuahua!!!\" \n}"  ./conf/Client.cfg 
 #Créer les fichiers de configuration ServerSYD.cfg ServerProvider.cfg dans lequel la balise uuid, IP et PORT sont présent (uuid optionnel pour le SP)
-echo "{ \n \"uuid\":\"c25f250d-2867-48e9-9553-1734de7c46c3\",\n  \"IP\":\"192.168.1.224\",\n  \"PORT\":\"443\",}"  ./conf/ServerSYD.cfg 
-echo "{ \n \"uuid\":\"\",\n  \"IP\":\"192.168.1.225\",\n  \"PORT\":\"443\",}"  ./conf/ServerProvider.cfg 
+echo "{ \n \"uuid\":\"853896a6-5ddb-4d0b-9516-52fc46cbe9b6\",\n  \"IP\":\"82.67.97.63\",\n  \"PORT\":\"443\",}"  ./conf/ServerSYD.cfg 
+echo "{ \n \"uuid\":\"\",\n  \"IP\":\"82.67.97.63\",\n  \"PORT\":\"443\",}"  ./conf/ServerProvider.cfg 
 
 #Compilation
-gcc -Wall -Wextra -Werror -Wformat -Wformat-security -fstack-protector-strong -fPIE -D_FORTIFY_SOURCE=2 Linux-client-v0.92.c -o SyD-Full -lssl -lcrypto -lgmp 
+gcc -Wall -Wextra -Werror -Wformat -Wformat-security -fstack-protector-strong -fPIE -D_FORTIFY_SOURCE=2 Linux-client-v0.97.c -o SyD -lssl -lcrypto -lgmp 
+
+Gestion de la mémoire avec Sanitize
+gcc -fsanitize=address,undefined -fno-omit-frame-pointer -g -Wall -Wextra -Werror -Wformat -Wformat-security -fstack-protector-strong -fPIE -D_FORTIFY_SOURCE=2 Linux-client-v0.97.c -o SyD -lssl -lcrypto -lgmp
+
 
 #Validation de la conformité mémoire
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.91.txt ./SyD -i
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.92.txt ./SyD -s
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.92.txt ./SyD -a ./Testv0.92.syd
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.92.txt ./SyD -c ./Testv0.92.syd log.debug
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.92.txt ./SyD -u ./Testv0.92.syd .
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.97.txt ./SyD -i
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.97.txt ./SyD -s
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.97.txt ./SyD -a ./Testv0.97.syd
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.97.txt ./SyD -c ./Testv0.97.syd log.debug
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.97.txt ./SyD -u ./Testv0.97.syd .
 */
 
 //------------------------------------------------------------------------------//
@@ -63,8 +67,8 @@ valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-fi
 #define MAX_FILES 100
 #define MAX_FILENAME_LEN 260
 #define MAX_FILENAME_PATH_LEN 520
-#define MAX_FILES_SIZE 209715200 // fixe la taille des archives .syd traitées
-#define MAX_FILES_SIZE_30P 272629760 // fixe la taille du buffer pour traiter les archives
+#define MAX_FILES_SIZE 1048576000 // fixe la taille maximale des archives traitées (X * 1024 * 1024)Mo : 200 Mo = 209715200 : 500Mo = 524288000 : 1 Go = 1048576000
+
 #define MAX_HTTP_RQST_SIZE 1024
 
 // définition des tailles de valeur des variables
@@ -187,12 +191,14 @@ char FILENAME[MAX_FILENAME_LEN]; // nom du fichier a sécuriser
 char PATH_OUT_FILE[MAX_FILENAME_LEN]; // Chemin de sortie du fichier contenu dans le SyD
 
 // Variables de gestion du fichier SyD
-size_t MAX_CL_COUNT = 100; // nombre de client max autorisé
+size_t MAX_CL_COUNT = 10; // nombre de client max autorisé
 char USERS[SIZE_BUFFER];
-char DATA[MAX_FILES_SIZE_30P];
-char UNCIPHER_DATA[MAX_FILES_SIZE];
+char *DATA = NULL;
+long DATA_SIZE = 0;
+char *UNCIPHER_DATA = NULL;
+long UNCIPHER_DATA_SIZE = 0;
+char IV[13];
 char TAG[64];
-
 
 //------------------------------------------------------------------------------//
 //-----------------------------DEBUG-ON-----------------------------------------//
@@ -340,7 +346,7 @@ int Match_regex(const char *string, const char *pattern) {
 }
 
 //------------------------------------------------------------------------------// 
-// Verification de la presence d'un fichier
+// Verification de la presence d'un repertoire
 char *Get_executable_dir() {
     static char exe_dir[MAX_FILENAME_LEN];
     char exe_path[MAX_FILENAME_LEN];
@@ -371,6 +377,34 @@ int Presence_Ref(const char *filename) {
         return 10; // le fichier n'existe pas
     }
 return 0;
+}
+
+//------------------------------------------------------------------------------// 
+// Verification de la taille d'un fichier
+long Taille_Fichier(const char *filename)
+{
+    FILE *file = fopen(filename, "rb");
+    if (file == NULL) {
+        return -1;  // fichier inexistant ou inaccessible
+    }
+
+    if (fseek(file, 0, SEEK_END) != 0) {
+        fclose(file);
+        return -1;
+    }
+
+    long taille = ftell(file);
+    if (taille == -1L) {
+        fclose(file);
+        return -1;
+    }
+
+    if (DEBUG == 1) {
+        printf("|Taille_Fichier| Taille : %ld octets\n", taille);
+    }
+
+    fclose(file);
+    return taille;
 }
 
 //------------------------------------------------------------------------------//
@@ -421,7 +455,7 @@ int Select_usage (struct ProgParams *PROGARGS) {
                if (DEBUG == 1) { printf(" |Select_usage| Souscription au SP\n");}
               ARGFCT = 5;                       
         } else {
-          // Copie des valeurs dans les variables globales
+        // Copie des valeurs dans les variables globales
           
         // Gestion des arguments pour la demande d'un conteneur  ( -a <./mon_conteneur.syd> <UUID> <UUID>)
           if (ARGFCT == 1 && i == 2) {
@@ -431,7 +465,7 @@ int Select_usage (struct ProgParams *PROGARGS) {
           } else if (ARGFCT == 1 && i > 2 && i < 6) {
               if (DEBUG == 1) { printf(" |Select_usage| FCT = -a & arg[%zu] = %s\n", i, PROGARGS->values[2]);}
               if (Match_regex(PROGARGS->values[3], REGEX_UUID) == 1) {
-                snprintf(LIST_UUID[j], sizeof(LIST_UUID), "%s", PROGARGS->values[i]);
+                snprintf(LIST_UUID[j], sizeof(LIST_UUID[j]), "%s", PROGARGS->values[i]);
                 if (DEBUG == 1) { printf(" |Select_usage| UUID[%zu] %s\n", j, LIST_UUID[j]);}
                 j++;
               } 
@@ -545,16 +579,17 @@ void Initialize_SYD(struct SYD *params) {
 }
 
 //------------------------------------------------------------------------------//
-// Fonction pour libérer les paramètres SYD
+// Fonction pour effacer les paramètres SYD
 void Free_SYD(struct SYD *params) {
-    memset(params->uuid, '\0', sizeof(params->uuid));
-    memset(params->g, '\0', sizeof(params->g));
-    memset(params->p, '\0', sizeof(params->p));
-    memset(params->x, '\0', sizeof(params->x));
-    memset(params->A, '\0', sizeof(params->A));
-    memset(params->z, '\0', sizeof(params->z));
-    memset(params->B, '\0', sizeof(params->B));
-    memset(params->date, '\0', sizeof(params->date));
+
+    explicit_bzero(params->uuid, sizeof(params->uuid));
+    explicit_bzero(params->g, sizeof(params->g));
+    explicit_bzero(params->p, sizeof(params->p));
+    explicit_bzero(params->x, sizeof(params->x));
+    explicit_bzero(params->A, sizeof(params->A));
+    explicit_bzero(params->z, sizeof(params->z));
+    explicit_bzero(params->B, sizeof(params->B));
+    explicit_bzero(params->date, sizeof(params->date));
 }
 
 void Initialize_dh_parameters(struct DHParameters *PARAMS) {
@@ -573,13 +608,36 @@ void Initialize_dh_parameters(struct DHParameters *PARAMS) {
     mpz_set_str(PARAMS->KBx, "0", 10);
 }
 
+//------------------------------------------------------------------------------// 
+// Fonction d'effacement des mpz 
+// et libérer les allocations mémoires
+static void secure_memzero(void *ptr, size_t len)
+{
+    volatile unsigned char *p = ptr;
+    while (len--) {
+        *p++ = 0;
+    }
+}
+
+void Secure_mpz_clear(mpz_t z)
+{
+    if (z->_mp_d != NULL) {
+        secure_memzero( // effacement sécurisé
+            z->_mp_d,
+            z->_mp_alloc * sizeof(mp_limb_t)
+        );
+    }
+    // liberation mémoire
+    mpz_clear(z);
+}
+
 //------------------------------------------------------------------------------//
-// Fonction pour libérer les paramètres DH
+// Fonction pour libérer les paramètres DH 
 void Free_dh_parameters(struct DHParameters *PARAMS) {
-    mpz_clear(PARAMS->p);
-    mpz_clear(PARAMS->x);
-    mpz_clear(PARAMS->B);
-    mpz_clear(PARAMS->KBx);  
+    Secure_mpz_clear(PARAMS->p);
+    Secure_mpz_clear(PARAMS->x);
+    Secure_mpz_clear(PARAMS->B);
+    Secure_mpz_clear(PARAMS->KBx);  
 }
 
 //------------------------------------------------------------------------------// 
@@ -762,29 +820,108 @@ unsigned char *base64_decode(const char *input, int *length) {
 //------------------------------------------------------------------------------//
 // Fonction de chiffrement AES-GCM avec sortie en Base64
 char *encrypt_AES_GCM_base64(const unsigned char *plaintext, int plaintext_len,
-                             const unsigned char *key, const unsigned char *iv, char *hash_tag) {
-    EVP_CIPHER_CTX *ctx;
-    unsigned char ciphertext[plaintext_len + EVP_MAX_BLOCK_LENGTH];
-    unsigned char tag[16]; 
-    int len, ciphertext_len;
+                             const unsigned char *key, const unsigned char *iv,
+                             char *hash_tag, size_t hash_tag_size)
+{
+    EVP_CIPHER_CTX *ctx = NULL;
+    unsigned char *ciphertext = NULL;
+    char *ciphertext_base64 = NULL;
+    char *tag_base64 = NULL;
 
+    unsigned char tag[16];  // GCM tag 128 bits
+    int len = 0, ciphertext_len = 0;
+
+    // --- Vérifications d’arguments ---
+    if (!plaintext || plaintext_len <= 0 || !key || !iv || !hash_tag) {
+        Write_log(LOG_FILE, "encrypt_AES_GCM_base64: invalid arguments");
+        return NULL;
+    }
+
+    // --- Allocation du buffer chiffré ---
+    size_t ciphertext_buf_size = (size_t)plaintext_len + EVP_MAX_BLOCK_LENGTH;
+    ciphertext = (unsigned char *)malloc(ciphertext_buf_size);
+    if (!ciphertext) {
+        Write_log(LOG_FILE, "encrypt_AES_GCM_base64:malloc(ciphertext) failed");
+        goto cleanup;
+    }
+
+    // --- Contexte OpenSSL ---
     ctx = EVP_CIPHER_CTX_new();
-    EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, key, iv);
-    EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, plaintext_len);
+    if (!ctx) {
+        Write_log(LOG_FILE, "encrypt_AES_GCM_base64:EVP_CIPHER_CTX_new failed");
+        goto cleanup;
+    }
+
+    // --- Init AES-256-GCM ---
+    if (EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL) != 1) {
+        Write_log(LOG_FILE, "encrypt_AES_GCM_base64:EVP_EncryptInit_ex (cipher) failed");
+        goto cleanup;
+    }
+
+    // IV 96 bits (12 octets) recommandé pour GCM
+    if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, 12, NULL) != 1) {
+        Write_log(LOG_FILE, "encrypt_AES_GCM_base64:EVP_CIPHER_CTX_ctrl(SET_IVLEN) failed");
+        goto cleanup;
+    }
+
+    if (EVP_EncryptInit_ex(ctx, NULL, NULL, key, iv) != 1) {
+        Write_log(LOG_FILE, "encrypt_AES_GCM_base64:EVP_EncryptInit_ex (key/iv) failed");
+        goto cleanup;
+    }
+
+    // --- Chiffrement ---
+    if (EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, plaintext_len) != 1) {
+        Write_log(LOG_FILE, "encrypt_AES_GCM_base64:EVP_EncryptUpdate failed");
+        goto cleanup;
+    }
     ciphertext_len = len;
-    EVP_EncryptFinal_ex(ctx, ciphertext + len, &len);
+
+    if (EVP_EncryptFinal_ex(ctx, ciphertext + ciphertext_len, &len) != 1) {
+        Write_log(LOG_FILE, "encrypt_AES_GCM_base64:EVP_EncryptFinal_ex failed");
+        goto cleanup;
+    }
     ciphertext_len += len;
-    EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, 16, tag);
+
+    // --- Tag GCM ---
+    if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, sizeof(tag), tag) != 1) {
+        Write_log(LOG_FILE, "encrypt_AES_GCM_base64:EVP_CIPHER_CTX_ctrl(GET_TAG) failed");
+        goto cleanup;
+    }
+
+    // --- Base64 ciphertext ---
+    ciphertext_base64 = base64_encode(ciphertext, ciphertext_len);
+    if (!ciphertext_base64) {
+        Write_log(LOG_FILE, "encrypt_AES_GCM_base64:base64_encode(ciphertext) failed");
+        goto cleanup;
+    }
+
+    // --- Base64 tag ---
+    tag_base64 = base64_encode(tag, (int)sizeof(tag));
+    if (!tag_base64) {
+        Write_log(LOG_FILE, "encrypt_AES_GCM_base64:base64_encode(tag) failed");
+        goto cleanup;
+    }
+
+    size_t tag_len = strlen(tag_base64);
+    if (tag_len + 1 > hash_tag_size) {
+        Write_log(LOG_FILE, "encrypt_AES_GCM_base64:hash_tag buffer too small");
+        goto cleanup;
+    }
+
+    if (snprintf(hash_tag, hash_tag_size, "%s", tag_base64) < 0) {
+        Write_log(LOG_FILE, "encrypt_AES_GCM_base64:snprintf(hash_tag) failed");
+        goto cleanup;
+    }
+
+cleanup:
     EVP_CIPHER_CTX_free(ctx);
-
-    // Encodage Base64 des données chiffrées et du tag
-    char *ciphertext_base64 = base64_encode(ciphertext, ciphertext_len);
-    char *tag_base64 = base64_encode(tag, 16);
-    sprintf(hash_tag, "%s", tag_base64);
-
+    free(ciphertext);
     free(tag_base64);
-    return ciphertext_base64; // Retourne le texte chiffré encodé en Base64
+
+    // ciphertext_base64 == NULL si erreur
+    return ciphertext_base64;
 }
+
 
 //------------------------------------------------------------------------------//
 // Fonction de chiffrement AES-GCM d'un fichier en entrée avec sortie en Base64
@@ -834,23 +971,28 @@ char *encrypt_file_AES_GCM_base64(const char *filepath, const unsigned char *key
     char *tag_base64 = base64_encode(tag, 16);
     free(ciphertext);
 
-    sprintf(hash_tag, "%s", tag_base64);
+    snprintf(hash_tag, 64, "%s", tag_base64); 
     free(tag_base64);
 
     return ciphertext_base64;
 }
+
 
 //------------------------------------------------------------------------------//
 // Fonction de déchiffrement 
 int decrypt_AES_GCM_base64(const char *ciphertext_base64, const char *tag_base64,
                            const unsigned char *key, const unsigned char *iv,
                            unsigned char *plaintext) {
-    int ciphertext_len, tag_len;
+    int ciphertext_len = 0, tag_len = 0;
+    int len = 0, plaintext_len = 0, ret = 0;
     unsigned char *ciphertext = base64_decode(ciphertext_base64, &ciphertext_len);
     unsigned char *tag = base64_decode(tag_base64, &tag_len);
+    EVP_CIPHER_CTX *ctx = NULL;
 
-    EVP_CIPHER_CTX *ctx;
-    int len, plaintext_len, ret;
+    if (!ciphertext_base64 || !tag_base64 || !plaintext || !key || !iv) {
+        Write_log(LOG_FILE, "decrypt_AES_GCM_base64: invalid arguments");
+        return 11;
+    }
 
     ctx = EVP_CIPHER_CTX_new();
     EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, key, iv);
@@ -905,23 +1047,23 @@ return 0;
 // Fonction d'ecriture dans la base des UUID
 int Write_SYD(const char *filename, struct SYD *params) {
     // Ouvrir le fichier en mode ajout
-
-    char separateur[] = ";";
-
     char line[33000];
-    memset(line, '\0', sizeof(line)); 
+    memset(line, '\0', sizeof(line));       
+        
+    int written = snprintf(
+        line,
+        sizeof(line),
+        "CL;%s;%s;%s;%s;%s;\n",
+        params->uuid,
+        params->date,
+        params->p,
+        params->x,
+        params->A
+    );
 
-        strcat(line, "CL;");
-        strcat(line, params->uuid);
-        strcat(line, separateur);
-        strcat(line, params->date);
-        strcat(line, separateur);
-        strcat(line, params->p);
-        strcat(line, separateur);
-        strcat(line, params->x);
-        strcat(line, separateur);
-        strcat(line, params->A);
-        strcat(line, separateur);
+    if (written < 0 || (size_t)written >= sizeof(line)) {
+        return 12;
+    }
        
     FILE *file = fopen(filename, "a");
     if (file == NULL) {
@@ -937,13 +1079,13 @@ int Write_SYD(const char *filename, struct SYD *params) {
     if (fclose(file) != 0) {
         return 579;
     }   
-    memset(line, '\0', sizeof(line));
+    explicit_bzero(line, sizeof(line)); // effacement de la ligne en mémoire
     return 0;
 }
 
 //------------------------------------------------------------------------------//
 // Fonction pour créer le fichier SYD
-int Write_CloseSYD(char *sydfilename, char *encryptfilename, char *data) {
+int Write_CloseSYD(char *sydfilename, char *encryptfilename, char *data, char *iv) {
 
        //printf(" |Write_CloseSYD| sydfilename %s encryptfilename %s \n", sydfilename, encryptfilename );
 
@@ -958,7 +1100,8 @@ int Write_CloseSYD(char *sydfilename, char *encryptfilename, char *data) {
     fprintf(file, "    \"SYD\": \"%s\",\n",SYD_UUID);
     fprintf(file, "    \"USER\": \"%s\",\n", USERS);
     fprintf(file, "    \"FILENAME\": \"%s\",\n", encryptfilename);
-    fprintf(file, "    \"DATA\": \"%s\",\n", data);   
+    fprintf(file, "    \"DATA\": \"%s\",\n", data);
+    fprintf(file, "    \"IV\": \"%s\",\n", iv);       
     fprintf(file, "    \"TAG\": \"%s\",\n", TAG);
     fprintf(file, "}");
 
@@ -1098,9 +1241,7 @@ int Read_json(const char *filename, struct JsonValues *jvals) {
             *value_end = '\0';
 
             jvals->entries[i].key = strdup(key_start);
-            //printf(" |Read_Json| Key : %s\n", jvals->entries[i].key); // Dev Debug 
             jvals->entries[i].value = strdup(value_start);
-            //printf(" |Read_Json| Value : %s\n", jvals->entries[i].value); // Dev Debug
             if (!jvals->entries[i].key || !jvals->entries[i].value) {
                 Write_log(LOG_FILE, "READ-JSON:500:jvals Allocation memory error");
                 return 500;
@@ -1131,7 +1272,6 @@ int Read_json(const char *filename, struct JsonValues *jvals) {
 // Fonction pour lire les valeurs depuis une chaine de caractere JSON
 int Read_char_json(const char *data, struct JsonValues *jvals) {
     if (data == NULL) {
-        //fprintf(stderr, "Read_json Erreur : donnees JSON nulles\n");
         Write_log(LOG_FILE, "Read_char_json:204:NO_CONTENT");
         return 204;
     }
@@ -1196,6 +1336,7 @@ int Detect_error(const char* text) {
     int ret_Read_char_json = Read_char_json(text, &jvals );
     if ( ret_Read_char_json != 0 ) {
         Write_log(LOG_FILE, "Detect_error:10:JSON_RESPONSE read error");
+        Free_json_values(&jvals);
         return 10;
     }
     // Fonctions de debug de gestion des JSONs 
@@ -1210,9 +1351,11 @@ int Detect_error(const char* text) {
             printf("------------------------------------------------------------------\n");
             printf(" |Detect_error| Return code : %d\n", ret_err_val);
             }
+        Free_json_values(&jvals);
         return ret_err_val; // interpreter le retour 201(souscrit) 200(déjà souscrit) ou autre qui sont des erreurs dans le client
         }
     }
+    Free_json_values(&jvals);
     return 0;
 }
 
@@ -1224,18 +1367,15 @@ void Transfer_Server_Conf(const struct JsonValues *jvals, struct ServerConf *srv
             if (DEBUG == 1) {printf(" |Transfer_Server_Conf| i : %zu/%zu|\n", i, jvals->entry_count);
                 printf(" |Transfer_Server_Conf| Key : %s|\n", jvals->entries[i].key);
             }   
-        if (strcmp(jvals->entries[i].key, "uuid") == 0) {
-            size_t longueuruuid = strlen(jvals->entries[i].value) + 1;               // Taille de la chaine de caractere              
-            snprintf(srv_params->uuid, longueuruuid, "%s", jvals->entries[i].value);
-              if (DEBUG == 1) {printf(" |Transfer_Server_Conf| SRV_PARAMS uuid: %s|\n", srv_params->uuid);}
-         }  else if (strcmp(jvals->entries[i].key, "IP") == 0) {
-            size_t longueurg = strlen(jvals->entries[i].value) + 1; 
-            snprintf(srv_params->IP, longueurg, "%s", jvals->entries[i].value);       
-              if (DEBUG == 1) {printf(" |Transfer_Server_Conf| SRV_PARAMS g: %s|\n", srv_params->IP);}
+        if (strcmp(jvals->entries[i].key, "uuid") == 0) {          
+            snprintf(srv_params->uuid, sizeof(srv_params->uuid), "%s", jvals->entries[i].value);
+            if (DEBUG == 1) {printf(" |Transfer_Server_Conf| SRV_PARAMS uuid: %s|\n", srv_params->uuid);}
+        }  else if (strcmp(jvals->entries[i].key, "IP") == 0) {
+            snprintf(srv_params->IP, sizeof(srv_params->IP), "%s", jvals->entries[i].value);       
+            if (DEBUG == 1) {printf(" |Transfer_Server_Conf| SRV_PARAMS g: %s|\n", srv_params->IP);}
         }  else if (strcmp(jvals->entries[i].key, "PORT") == 0) {
-            size_t longueurp = strlen(jvals->entries[i].value) + 1;
-            snprintf(srv_params->PORT, longueurp, "%s", jvals->entries[i].value); 
-              if (DEBUG == 1) {printf(" |Transfer_Server_Conf| SRV_PARAMS p: %s|\n", srv_params->PORT);}   
+            snprintf(srv_params->PORT, sizeof(srv_params->PORT), "%s", jvals->entries[i].value); 
+            if (DEBUG == 1) {printf(" |Transfer_Server_Conf| SRV_PARAMS p: %s|\n", srv_params->PORT);}  
         }
     }
 }
@@ -1335,10 +1475,9 @@ int Read_uuid_client(const char *filename) {
             printf(" |Read_config_client| i : %zu/%zu|\n", i, jvals.entry_count);
             printf(" |Read_config_client| Key : %s|\n", jvals.entries[i].key);
         }   
-        if (strcmp(jvals.entries[i].key, "UUID") == 0) {
-            size_t longueurUUID = strlen(jvals.entries[i].value) + 1;                     
-            snprintf(CL_UUID, longueurUUID, "%s", jvals.entries[i].value);
-        }       
+        if (strcmp(jvals.entries[i].key, "UUID") == 0) {                             
+            snprintf(CL_UUID, sizeof (CL_UUID), "%s", jvals.entries[i].value);
+        }
         if (DEBUG == 1) {printf(" |Read_uuid_client| UUID: %s|\n", CLIENTKEY);}
     } 
 
@@ -1368,7 +1507,7 @@ int Read_reply() {
       if (DEBUG == 1) { Display_json(&jvals); }
     // Dechiffrer la valeur de X
         char tag[64];
-        char ciphertext_base64[4096];
+        char ciphertext_base64[4096]; // Il s'agit du retour venant du SYD, X ne peut être plus grand qu'une chaine de 2884 caractères
         unsigned char decryptedtext[4096];
         unsigned char hash_Key[SHA256_DIGEST_LENGTH];
         unsigned char iv[12];  // IV basé sur le 12 permiers caractères de P
@@ -1383,36 +1522,31 @@ int Read_reply() {
             if (DEBUG == 1) {printf(" |Transfert_SYD_values| i : %zu/%zu|\n", i, jvals.entry_count);
                 printf(" |Transfert_SYD_values| Key : %s|\n", jvals.entries[i].key);
             }   
-         if (strcmp(jvals.entries[i].key, "UUID") == 0) {
-              size_t longueuruuid = strlen(jvals.entries[i].value) + 1;               // Taille de la chaine de caractere              
-              snprintf(SYD_PARAMS.uuid, longueuruuid, "%s", jvals.entries[i].value);
+         if (strcmp(jvals.entries[i].key, "UUID") == 0) {          
+              snprintf(SYD_PARAMS.uuid, sizeof(SYD_PARAMS.uuid), "%s", jvals.entries[i].value);
               if (DEBUG == 1) {printf(" |Transfert_SYD_values| UUID: %s|\n", SYD_PARAMS.uuid);}   
-        } else if (strcmp(jvals.entries[i].key, "DATE") == 0) {
-              size_t longueurdate = strlen(jvals.entries[i].value) + 1;               // Taille de la chaine de caractere              
-              snprintf(SYD_PARAMS.date, longueurdate, "%s", jvals.entries[i].value);
+        } else if (strcmp(jvals.entries[i].key, "DATE") == 0) {           
+              snprintf(SYD_PARAMS.date, sizeof(SYD_PARAMS.date), "%s", jvals.entries[i].value);
               if (DEBUG == 1) {printf(" |Transfert_SYD_values| DATE: %s|\n", SYD_PARAMS.date);}   
-        } else if (strcmp(jvals.entries[i].key, "P") == 0) {
-              size_t longueurp = strlen(jvals.entries[i].value) + 1;               // Taille de la chaine de caractere              
-              snprintf(SYD_PARAMS.p, longueurp, "%s", jvals.entries[i].value);
+        } else if (strcmp(jvals.entries[i].key, "P") == 0) {       
+              snprintf(SYD_PARAMS.p, sizeof(SYD_PARAMS.p), "%s", jvals.entries[i].value);
               strncpy((char *)iv, jvals.entries[i].value, 12); 
               if (DEBUG == 1) {printf(" |Transfert_SYD_values| P: %s|\n", SYD_PARAMS.p);}   
         } else if (strcmp(jvals.entries[i].key, "X") == 0) {
-            size_t longueurx = strlen(jvals.entries[i].value) + 1; 
-            snprintf(ciphertext_base64, longueurx, "%s", jvals.entries[i].value);
+            snprintf(ciphertext_base64, sizeof(ciphertext_base64), "%s", jvals.entries[i].value);
               if (DEBUG == 1) {printf(" |Transfert_SYD_values| X : %s|\n", ciphertext_base64);}
-        } else if (strcmp(jvals.entries[i].key, "TAG") == 0) {
-            size_t longueurtag = strlen(jvals.entries[i].value) + 1;               // Taille de la chaine de caractere              
-            snprintf(tag, longueurtag, "%s", jvals.entries[i].value);
+        } else if (strcmp(jvals.entries[i].key, "TAG") == 0) {           
+            snprintf(tag, sizeof(tag), "%s", jvals.entries[i].value);
               if (DEBUG == 1) {printf(" |Transfert_SYD_values| TAG : %s|\n", tag);}
         } else if (strcmp(jvals.entries[i].key, "SYD") == 0) {
-            size_t longueurSYD = strlen(jvals.entries[i].value) + 1;
-            snprintf(SERVER_SYD_UUID, longueurSYD, "%s", jvals.entries[i].value);  
+            snprintf(SERVER_SYD_UUID, sizeof(SERVER_SYD_UUID), "%s", jvals.entries[i].value);  
               if (DEBUG == 1) {printf(" |Transfert_SYD_values| SERVER_SYD_UUID: %s|\n", SERVER_SYD_UUID);}  
         }  
     }
     
     // Dechiffement de X 
-        int decrypted_len = decrypt_AES_GCM_base64(ciphertext_base64, tag, hash_Key, iv, decryptedtext);
+    
+    int decrypted_len = decrypt_AES_GCM_base64(ciphertext_base64, tag, hash_Key, iv, decryptedtext);
     if (decrypted_len >= 0) {
         decryptedtext[decrypted_len] = '\0';
     } else {
@@ -1422,13 +1556,19 @@ int Read_reply() {
     if ( sha256(CLIENTKEY, hash_Key) != 0) {
       printf("14\n");
         }
-    char *encrypted_base64 = encrypt_AES_GCM_base64(decryptedtext, strlen((char *)decryptedtext), hash_Key, iv, tag);
+    char *encrypted_base64 = encrypt_AES_GCM_base64(decryptedtext, strlen((char *)decryptedtext), hash_Key, iv, tag, sizeof(tag));
     // Transfert dans la structure SYD pour traitement ultérieurs des constantes recues   
 
     // Ajout de la valeur de x dechiffrée 
     sprintf(SYD_PARAMS.x, "%s", encrypted_base64);
     sprintf(SYD_PARAMS.A, "%s", tag);
     if (DEBUG == 1) { Display_SYD(&SYD_PARAMS); }
+    
+    // effacement des valeurs de calculs
+    explicit_bzero(decryptedtext, sizeof(decryptedtext));
+    explicit_bzero(hash_Key, sizeof(hash_Key));
+    explicit_bzero(iv, sizeof(iv));
+    explicit_bzero(tag, sizeof(tag));
     
     Free_json_values(&jvals);
     return 0;
@@ -1471,7 +1611,7 @@ char line[1024] = "{\"VERB\": \"CREA\", \"ARGS\": \"";
         strcat(line, REQUESTKEY);
         strcat(line, "\"}");
       
-  sprintf(json_data, "%s", line);       
+  snprintf(json_data, 1024, "%s", line);       
 }
 
 //------------------------------------------------------------------------------// 
@@ -1487,7 +1627,7 @@ char line[1024] = "{\"VERB\": \"SUBS\", \"CL\": \"";
         strcat(line, SYD_UUID);
         strcat(line, "\"}");
       
-  sprintf(json_data, "%s", line);       
+  snprintf(json_data, 1024, "%s", line);       
 }
 
 //------------------------------------------------------------------------------// 
@@ -1507,7 +1647,7 @@ char line[1024] = "{ \"VERB\": \"TANK\", \"SYD\": \"";
         strcat(line, CL_UUID);
         strcat(line, "\" }");
       
-  sprintf(json_data, "%s", line);       
+  snprintf(json_data, 1024, "%s", line);       
 }
 
 //------------------------------------------------------------------------------// 
@@ -1543,14 +1683,11 @@ int Read_BDD(const char *filename, char *state, const char *uuid, char *date, ch
 
         // Comparaison de l'uuid et transfert des valeurs
         if (strcmp(values[1], uuid) == 0) {
-            strncpy(state, values[0], 10);
-            strncpy(date, values[2], 20);
-            strncpy(p, values[3], SIZE_BUFFER);
-            //snprintf(p, sizeof(SIZE_BUFFER), "%s", values[3]);
-            strncpy(x, values[4], SIZE_BUFFER);
-            //snprintf(g, sizeof(SIZE_BUFFER), "%s", values[4]);
-            strncpy(tag, values[5], SIZE_BUFFER);
-            //snprintf(A, sizeof(SIZE_BUFFER), "%s", values[5]);
+            snprintf(state, 10, "%s", values[0]);
+            snprintf(date, 20, "%s", values[2]);
+            snprintf(p, SIZE_BUFFER, "%s", values[3]);
+            snprintf(x, SIZE_BUFFER, "%s", values[4]);
+            snprintf(tag, SIZE_BUFFER, "%s", values[5]);
             break;
         }
     }
@@ -1702,13 +1839,10 @@ int Read_SYD_USER(const char *filename) {
                 printf(" |Read_SYD_USER| Key : %s|\n", jvals.entries[i].key);
             }   
          if (strcmp(jvals.entries[i].key, "SYD") == 0) {
-              //size_t longueuruuid = strlen(jvals.entries[i].value) + 1;               // Taille de la chaine de caractere
-                //vérification de la longueur (si longueuruuid < sizeof(srv_params->uuid))         
-              //snprintf(SYD_UUID, longueuruuid, "%s", jvals.entries[i].value);
               snprintf(SYD_UUID, sizeof(SYD_UUID), "%s", jvals.entries[i].value);
               if (DEBUG == 1) {printf(" |Read_SYD_USER| UUID: %s|\n", SYD_UUID);}   
         } else if (strcmp(jvals.entries[i].key, "USER") == 0) {
-              //size_t longueuruser = strlen(jvals.entries[i].value) + 1;               // Taille de la chaine de caractere              
+        
               snprintf(user, sizeof(user), "%s", jvals.entries[i].value);
               snprintf(USERS, sizeof(USERS), "%s", jvals.entries[i].value);
               if (DEBUG == 1) {printf(" |Read_SYD_USER| USER: %s|\n", user);}   
@@ -1721,8 +1855,6 @@ int Read_SYD_USER(const char *filename) {
     
     // Libération de la mémoire
     Free_json_values(&jvals);
-    
-
     
     // Lecture des CL contenus dans users
     Parsing_SYD_user(user);
@@ -1754,7 +1886,8 @@ int Read_SYD_DATA(const char *filename) {
         Display_json(&jvals); 
     }
 
-    memset(DATA, '\0', sizeof(DATA));
+    memset(DATA, '\0', DATA_SIZE);
+    memset(IV, '\0', sizeof(IV));
     memset(TAG, '\0', sizeof(TAG));
     memset(FILENAME, '\0', sizeof(FILENAME));
 
@@ -1764,17 +1897,14 @@ int Read_SYD_DATA(const char *filename) {
                 printf(" |Read_SYD_DATA| Key : %s|\n", jvals.entries[i].key);
             }   
          if (strcmp(jvals.entries[i].key, "DATA") == 0) {
-              //size_t longueurDATA = strlen(jvals.entries[i].value) + 1;               // Taille de la chaine de caractere              
-              //snprintf(DATA, longueurDATA, "%s", jvals.entries[i].value);
-              snprintf(DATA, sizeof(DATA), "%s", jvals.entries[i].value);   
+              snprintf(DATA, DATA_SIZE, "%s", jvals.entries[i].value);   
+        } else if (strcmp(jvals.entries[i].key, "IV") == 0) {
+              snprintf(IV, sizeof(IV), "%s", jvals.entries[i].value);
+              if (DEBUG == 1) {printf(" |Read_SYD_DATA| IV: %s|\n", IV);}   
         } else if (strcmp(jvals.entries[i].key, "TAG") == 0) {
-              //size_t longueurTAG = strlen(jvals.entries[i].value) + 1;               // Taille de la chaine de caractere              
-              //snprintf(TAG, longueurTAG, "%s", jvals.entries[i].value);
               snprintf(TAG, sizeof(TAG), "%s", jvals.entries[i].value);
               if (DEBUG == 1) {printf(" |Read_SYD_DATA| TAG: %s|\n", TAG);}   
         } else if (strcmp(jvals.entries[i].key, "FILENAME") == 0) {
-              //size_t longueurFILENAME = strlen(jvals.entries[i].value) + 1;               // Taille de la chaine de caractere              
-              //snprintf(FILENAME, longueurFILENAME, "%s", jvals.entries[i].value);
               snprintf(FILENAME, sizeof(FILENAME), "%s", jvals.entries[i].value);
               if (DEBUG == 1) {printf(" |Read_SYD_DATA| FILENAME: %s|\n", FILENAME);}   
         }
@@ -1802,10 +1932,6 @@ int Gmp_to_char(mpz_t large_number, char chaine[SIZE_BUFFER] ) {
         return 25; // Code d'erreur pour indiquer que gmp_sprintf a échoué
     }
 
-    /*if (DEBUG == 1) { // Dev Debug
-          printf(" |Gmp_to_char| mpz : "); mpz_out_str(stdout, 10, large_number); printf("\n");
-          printf(" |Gmp_to_char| char : %s\n", chaine);
-    }*/
     return 0; 
 }
 
@@ -1819,10 +1945,7 @@ int Char_to_gmp(char chaine[SIZE_BUFFER], mpz_t large_number) {
         Write_log(LOG_FILE, "Char_to_gmp:26:CONVERSION ERROR");
         return 26; // Code d'erreur pour indiquer que la conversion n'a pas marchée
     }
-    /*    if (DEBUG == 1) { // Dev Debug
-          printf(" |Char_to_gmp| char : %s\n", chaine);
-          printf(" |Char_to_gmp| mpz : "); mpz_out_str(stdout, 10, large_number); printf("\n");
-          } */
+
     return 0; // Succès
 }
 
@@ -1878,23 +2001,29 @@ int SYD_EnrollClient() {
     // Creation de la requete JSON a envoyer au serveur
     
         // Creation du secret pour la requete
+        memset(REQUESTKEY, '\0', sizeof(REQUESTKEY));
         Generation_chaine(REQUESTKEY, 32);
     
     // Creation de la requete en fonction du type
         char json_data[256];
+        memset(json_data, '\0', sizeof(json_data));
         Create_Req_JSON(json_data);
     
     // Envoi de la requete au serveur
-    
+        memset(HTTP_RESPONSE, '\0', sizeof(HTTP_RESPONSE));
         Send_post(SVR_SYD_CONF_PARAMS.IP, SVR_SYD_CONF_PARAMS.PORT, url, json_data);
     // Recuperation de la requete et retrait de l'entete HTTP
+        memset(JSON_RESPONSE, '\0', sizeof(JSON_RESPONSE));
         Copy_json_rply_to_char();
         
     // Lecture et attribution des valeurs à la structure
         Read_reply();
     
-    // Ecriture de la bdd locale avec les éléments
-    
+    // Effacement des chaines  
+        explicit_bzero(HTTP_RESPONSE, sizeof(HTTP_RESPONSE));
+        explicit_bzero(JSON_RESPONSE, sizeof(JSON_RESPONSE));
+        
+    // Ecriture de la bdd locale avec les éléments   
         char path_file_bdd[1024];
         memset(path_file_bdd, '\0', sizeof(path_file_bdd));
         sprintf(path_file_bdd, "%s%s.bdd", BDD_PATH, SERVER_SYD_UUID);
@@ -2121,10 +2250,10 @@ int SYD_OpenSYD() {
     // Declaration des variables de la fonction  
     char encrypted_base64[SIZE_BUFFER];
     char tag[64];
-    unsigned char decrypted_x[SIZE_X];
+    unsigned char decrypted_x[SIZE_BUFFER];
     unsigned char shared_key[SIZE_X];
     unsigned char hash_Key[SHA256_DIGEST_LENGTH];
-    unsigned char iv[12];  // IV basé sur le 12 permiers caractères de P
+    unsigned char iv[13];  // IV basé sur le 12 permiers caractères de P
     
     // Initialisation des variables de la fonction
     memset(encrypted_base64, '\0', SIZE_BUFFER);
@@ -2214,6 +2343,9 @@ int SYD_OpenSYD() {
                 printf(" |OpenSYD| CL p : %s\n", SYD_PARAMS.p);
                 printf(" |OpenSYD| CL x : %s\n", SYD_PARAMS.x);
             }
+        //Effacement de la chaine decrypted_x
+        explicit_bzero(decrypted_x, sizeof(decrypted_x));
+        
     // Initialisation du calcul de la clef KBx
     struct DHParameters DH_PARAMS;
     Initialize_dh_parameters(&DH_PARAMS);
@@ -2239,8 +2371,13 @@ int SYD_OpenSYD() {
         if ( sha256(temp, hash_Key) != 0) {
           Write_log(LOG_FILE, "SP:14:HASH_CORRUPTION");  
           return 14;
-        }    
-
+        }
+    // Effacement des mpz
+    Free_dh_parameters(&DH_PARAMS);
+        
+    // Effacement de temp 
+    explicit_bzero(temp, sizeof(temp));
+    
     if (DEBUG == 1) { 
         printf("------------------------------------------------------------------\n");
         printf(" |OpenSYD| Dechiffrement de SYDKEY\n");
@@ -2257,7 +2394,10 @@ int SYD_OpenSYD() {
             printf("Erreur Shared Key\n");
             return 20;
         }
-
+    // Effacement de hash_key et iv
+    explicit_bzero(hash_Key, sizeof(hash_Key));
+    explicit_bzero(iv, sizeof(iv));
+    
     // -----------------------------------------------------------------------------
     // Partie de la fonction qui permet de traiter les données chiffrées dans le SYD
 
@@ -2266,65 +2406,129 @@ int SYD_OpenSYD() {
         printf("------------------------------------------------------------------\n");
         printf(" |OpenSYD| Lecture des donnees\n");
     }
+    // Verifier la taille du fichier .syd
+    // int64_t Taille_Fichier(const char *filename)
+    DATA_SIZE = 0;
+    DATA_SIZE = Taille_Fichier(SYDFILE);
+    // Faire l'allocation des buffers mémoires
+    if (DATA_SIZE <= 0 || DATA_SIZE > MAX_FILES_SIZE) {
+       return 16; //Fichier trop grand
+    }   
+    DATA = malloc((size_t)DATA_SIZE + 1);
+    
+    if (DATA == NULL) {
+        return 12; // erreur d'allocation memoire
+    }
+              
+    // Si le fichier est inférieur a la limite mémoire alors lecture
     Read_SYD_DATA(SYDFILE);
 
     // Verifier si DATA Null
     if ( DATA[0] != '\0' ) {
 
-        // Recuperation de l'IV 
-        memset(iv, '\0', sizeof(iv));
-        strncpy((char *)iv, SYD_UUID, 12);
-        // Copie en memoire dans le bon format de la clef partagée
         memset(hash_Key, '\0', sizeof(hash_Key));
         char signed_shared_key[SIZE_X];
         memcpy(signed_shared_key, shared_key, sizeof(shared_key));
 
-    if (DEBUG == 1) {
-        printf("------------------------------------------------------------------\n");
-        printf(" |OpenSYD| Unsigned Shared_key |%s|\n", shared_key);
-        printf(" |OpenSYD| Signed Shared Key  |%s|\n", signed_shared_key);
-        printf(" |OpenSYD| iv |%s|\n", iv);
-        //printf(" |OpenSYD| DATA |%s|\n", DATA); // Ne pas décommenter en qualification avec des fichiers de grosse taille
-        printf(" |OpenSYD| TAG |%s|\n", TAG);
-        //printf(" |OpenSYD| OPENED SYD |%s|\n", tmp_syd);
-    }
-        // Calcul du hash de la clef partagée
-        if ( sha256(signed_shared_key, hash_Key) != 0) {
-          Write_log(LOG_FILE, "SP:14:HASH_CORRUPTION");  
-          return 14;
-        }
-        // Déchiffrement de de DATA  
-        int decrypted_DATA_len = decrypt_AES_GCM_base64(DATA, TAG, hash_Key, iv, (unsigned char *)UNCIPHER_DATA);
-        if (decrypted_DATA_len >= 0) {
-                    if (DEBUG == 1) {
-                        printf("------------------------------------------------------------------\n");
-                        printf(" |OpenSYD| Data length |%d|\n", decrypted_DATA_len);
-                        }
-        } else {
-            Write_log(LOG_FILE, "OpenSYD:20:UNCIPHER_FAIL File not uncipher");
-            return 20;
-        }
-       
-        char tmp_out_path_file[SIZE];
-        snprintf(tmp_out_path_file, SIZE, "%s/%s", PATH_OUT_FILE, FILENAME);
 
-        FILE *fichier = fopen(tmp_out_path_file, "wb");  // mode "w" pour écraser, "a" pour ajouter
+          if (DEBUG == 1) {
+              printf("------------------------------------------------------------------\n");
+              printf(" |OpenSYD| Unsigned Shared_key |%s|\n", shared_key);
+              printf(" |OpenSYD| Signed Shared Key  |%s|\n", signed_shared_key);
+              printf(" |OpenSYD| iv |%s|\n", IV);
+              printf(" |OpenSYD| TAG |%s|\n", TAG);
+          }
+          // Effacement de shared_key
+          explicit_bzero(shared_key, sizeof(shared_key));
+          // Calcul du hash de la clef partagée
+          if ( sha256(signed_shared_key, hash_Key) != 0) {
+              Write_log(LOG_FILE, "SP:14:HASH_CORRUPTION");  
+              return 14;
+          }
+          // Effacement de signed_shared_key
+          explicit_bzero(signed_shared_key, sizeof(signed_shared_key));
+          
+          // Allocation de la variable UNCIPHER_DATA
+          // allocation de 33.3% de plus '\0' de fin de chaine
+          UNCIPHER_DATA_SIZE = (4 * ((size_t)DATA_SIZE + 2) / 3) + 1; 
+          UNCIPHER_DATA = malloc(UNCIPHER_DATA_SIZE);
+          
+          if (UNCIPHER_DATA == NULL) {
+              // Liberation de la mémoire de DATA et UNCIPHER_DATA
+              free(DATA);
+              DATA = NULL;
+              // Effacement des clefs
+              explicit_bzero(hash_Key, sizeof(hash_Key));
+              explicit_bzero(iv, sizeof(iv));              
+              return 12;
+          }
+          
+          // mise en forme de l'IV
+          unsigned char tmpiv[13];
+          memset(tmpiv, '\0', sizeof(tmpiv));
+          strncpy((char *)tmpiv, IV, 12);
+          
+          
+              // Déchiffrement de de DATA  
+              int decrypted_DATA_len = decrypt_AES_GCM_base64(DATA, TAG, hash_Key, tmpiv, (unsigned char *)UNCIPHER_DATA);
+              if (decrypted_DATA_len >= 0) {
+                  // Effacement des clefs
+                  explicit_bzero(hash_Key, sizeof(hash_Key));
+                  explicit_bzero(IV, sizeof(IV));
+                  explicit_bzero(tmpiv, sizeof(tmpiv));
+                  free(DATA);
+                  DATA = NULL;
+
+                          if (DEBUG == 1) {
+                              printf("------------------------------------------------------------------\n");
+                              printf(" |OpenSYD| Data length |%d|\n", decrypted_DATA_len);
+                              }
+              } else {
+                  Write_log(LOG_FILE, "OpenSYD:20:UNCIPHER_FAIL File not uncipher");
+                  // Effacement de signed_shared_key
+                  explicit_bzero(hash_Key, sizeof(hash_Key));
+                  explicit_bzero(IV, sizeof(IV));
+                  explicit_bzero(tmpiv, sizeof(tmpiv));
+                  free(UNCIPHER_DATA);
+                  UNCIPHER_DATA = NULL;
+                  free(DATA);
+                  DATA = NULL;
+                  return 20;
+              }
+       
+              char tmp_out_path_file[SIZE];
+              snprintf(tmp_out_path_file, SIZE, "%s/%s", PATH_OUT_FILE, FILENAME);
+      
+              FILE *fichier = fopen(tmp_out_path_file, "wb");  // mode "w" pour écraser, "a" pour ajouter
+              
+              if (fichier == NULL) {
+                  Write_log(LOG_FILE, "OpenSYD:10:Unable to write DATA");
+                  free(UNCIPHER_DATA);
+                  UNCIPHER_DATA = NULL;
+                  free(DATA);
+                  DATA = NULL;
+                  return 10;
+              }
         
-        if (fichier == NULL) {
-            Write_log(LOG_FILE, "OpenSYD:10:Unable to write DATA");
-            return 10;
-        }
-        
-        fwrite(UNCIPHER_DATA, 1, decrypted_DATA_len, fichier);
-        fclose(fichier);
+              fwrite(UNCIPHER_DATA, 1, decrypted_DATA_len, fichier);
+              fclose(fichier);
     } else {
             if (DEBUG == 1) {
                 printf("------------------------------------------------------------------\n");
                 printf(" |OpenSYD| DATA vide\n");
             }
+            
             return 0;
     }
-    // Effacement des espaces mémoires alloués
+    
+    // Effacement des chaines temporaires
+    explicit_bzero(TAG, sizeof(TAG));
+        
+    // Libération des espaces mémoires alloués    
+    free(UNCIPHER_DATA);
+    UNCIPHER_DATA = NULL;
+    free(DATA);
+    DATA = NULL;
     Free_SYD(&SYD_PARAMS);
 
     return 0;
@@ -2345,14 +2549,14 @@ int SYD_CloseSYD() {
 
     // Declaration des variables de la fonction 
     char tag[64];
-    unsigned char decrypted_x[SIZE_X];
-    unsigned char shared_key[SIZE_X];
+    unsigned char decrypted_x[SIZE_X + 1]; // le +1 est pour pouvoir ajouter le '\0' de fin de caractère sur l'unsigned char
+    unsigned char shared_key[SIZE_X + 1];
     unsigned char hash_Key[SHA256_DIGEST_LENGTH];
-    unsigned char iv[12];  // IV basé sur le 12 permiers caractères de P
+    unsigned char iv[12 + 1];  // IV basé sur le 12 permiers caractères de P
     
     // Initialisation des variables de la fonction
     
-    memset(tag, '\0', 64);
+    memset(tag, '\0', sizeof(tag));
     memset(iv, '\0', sizeof(iv));
     // Initialisation des structures
     Initialize_SYD(&SYD_PARAMS);
@@ -2437,6 +2641,9 @@ int SYD_CloseSYD() {
                 printf(" |CloseSYD| CL p : %s\n", SYD_PARAMS.p);
                 printf(" |CloseSYD| CL x : %s\n", SYD_PARAMS.x);
             }
+        //Effacement de la chaine decrypted_x
+        explicit_bzero(decrypted_x, sizeof(decrypted_x));   
+            
     // Initialisation du calcul de la clef KBx
     struct DHParameters DH_PARAMS;
     Initialize_dh_parameters(&DH_PARAMS);
@@ -2456,7 +2663,6 @@ int SYD_CloseSYD() {
     char temp[SIZE_BUFFER];
     Gmp_to_char(DH_PARAMS.KBx, temp);
     
-    
     memset(hash_Key, '\0', sizeof(hash_Key));
         if ( sha256(temp, hash_Key) != 0) {
             if (DEBUG == 1) {
@@ -2465,6 +2671,9 @@ int SYD_CloseSYD() {
         Write_log(LOG_FILE, "CloseSYD:14:HASH_CORRUPTION");  
         return 14;
         }    
+
+    // Effacement des mpz
+    Free_dh_parameters(&DH_PARAMS);
 
     if (DEBUG == 1) { 
         printf("------------------------------------------------------------------\n");
@@ -2497,6 +2706,8 @@ int SYD_CloseSYD() {
     } 
     // Effacement de la clef partagée
     memset(shared_key, '\0', sizeof(shared_key));
+    explicit_bzero(shared_key, sizeof(shared_key)); // au cas ou...
+    
 
     if (DEBUG == 1) {
         printf("------------------------------------------------------------------\n");
@@ -2504,11 +2715,28 @@ int SYD_CloseSYD() {
         printf(" |CloseSYD| Fichier a chiffrer %s\n", FILENAME);
     }
 
-        char *encrypted_base64 = encrypt_file_AES_GCM_base64(FILENAME, hash_Key, iv, TAG);
+        // Creation d'un nouveau IV 
+        unsigned char tmpiv[12];
+        memset(tmpiv, '\0', sizeof(tmpiv));
+
+/*   xxx Modification a faire pour avoir un IV robuste meme si pas fondamentalement utile vu que l'IV est a usage unique et retiré systématiquement
+
+      if (RAND_bytes(iv, sizeof(iv)) != 1) {
+      return ERROR;
+      }
+      Transformation en B64
+      encode_base64(tmpiv, sizeof(tmpiv), IV, sizeof(12)); 
+      
+      et changer à la lecture  ajouter le decodage de la la B64:
+      decode_base64(iv_b64, iv, sizeof(iv));                     
+*/      
+        Generation_chaine(IV, 12); // Creation d'une chaine avec aléa 
+        strncpy((char *)tmpiv, IV, 12);
+
+        char *encrypted_base64 = encrypt_file_AES_GCM_base64(FILENAME, hash_Key, tmpiv, TAG);
         // Effacement IV et hash_key
-        memset(iv, '\0', sizeof(iv));
-        memset(hash_Key, '\0', sizeof(hash_Key));
-        
+        explicit_bzero(hash_Key, sizeof(hash_Key));
+   
         // Ecriture du fichier SyD
         // Récuperation du nom du fichier sans le chemin 
         const char *fullpath = FILENAME;
@@ -2517,12 +2745,15 @@ int SYD_CloseSYD() {
               if (DEBUG == 1) { printf(" |Select_usage| basename %s\n", basename);}
               sprintf(FILENAME, "%s", basename);
               
-        Write_CloseSYD(SYDFILE, FILENAME ,encrypted_base64);
+        Write_CloseSYD(SYDFILE, FILENAME ,encrypted_base64, IV);
         
+        // Effacement des chaines temporaires
+        explicit_bzero(IV, sizeof(IV));
+        explicit_bzero(encrypted_base64, sizeof(encrypted_base64));             
+        explicit_bzero(TAG, sizeof(TAG)); // ne pas effacer avant car utilisé dans Write_CloseSYD
         // Effacement des espaces mémoires alloués
+        free(encrypted_base64);
         Free_SYD(&SYD_PARAMS);
-        
-
 
 return 0;
 }
@@ -2649,6 +2880,9 @@ int main(int argc, char *argv[]) {
           }
           free(PROGARGS.values);
     
+// Effacement de CLIENTKEY et REQUESTKEY      
+   explicit_bzero(CLIENTKEY, sizeof(CLIENTKEY)); 
+   explicit_bzero(REQUESTKEY, sizeof(REQUESTKEY));
   return 0;  
 }
 
