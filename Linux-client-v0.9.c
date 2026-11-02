@@ -1514,7 +1514,6 @@ int Read_reply() {
         memset(iv, '\0', sizeof(iv));
         
         if ( sha256(REQUESTKEY, hash_Key) != 0) {
-            //printf("14\n");
             return 14;
         }
         
@@ -1551,12 +1550,10 @@ int Read_reply() {
     if (decrypted_len >= 0) {
         decryptedtext[decrypted_len] = '\0';
     } else {
-        printf("Echec du dechiffrement !\n");
         return 20;        
     }
     // Chiffrement de x pour stockage dans la BDD.syd locale
     if ( sha256(CLIENTKEY, hash_Key) != 0) {
-      //printf("14\n");
       return 14;
         }
     char *encrypted_base64 = encrypt_AES_GCM_base64(decryptedtext, strlen((char *)decryptedtext), hash_Key, iv, tag, sizeof(tag));
