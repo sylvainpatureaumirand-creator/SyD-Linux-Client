@@ -32,18 +32,18 @@ echo "{ \n \"uuid\":\"853896a6-5ddb-4d0b-9516-52fc46cbe9b6\",\n  \"IP\":\"82.67.
 echo "{ \n \"uuid\":\"\",\n  \"IP\":\"82.67.97.63\",\n  \"PORT\":\"443\",}"  ./conf/ServerProvider.cfg 
 
 #Compilation
-gcc -Wall -Wextra -Werror -Wformat -Wformat-security -fstack-protector-strong -fPIE -D_FORTIFY_SOURCE=2 Linux-client-v0.97.c -o SyD -lssl -lcrypto -lgmp 
+gcc -Wall -Wextra -Werror -Wformat -Wformat-security -fstack-protector-strong -fPIE -D_FORTIFY_SOURCE=2 Linux-client-v0.98.c -o SyD -lssl -lcrypto -lgmp 
 
 Gestion de la mémoire avec Sanitize
-gcc -fsanitize=address,undefined -fno-omit-frame-pointer -g -Wall -Wextra -Werror -Wformat -Wformat-security -fstack-protector-strong -fPIE -D_FORTIFY_SOURCE=2 Linux-client-v0.97.c -o SyD -lssl -lcrypto -lgmp
+gcc -fsanitize=address,undefined -fno-omit-frame-pointer -g -Wall -Wextra -Werror -Wformat -Wformat-security -fstack-protector-strong -fPIE -D_FORTIFY_SOURCE=2 Linux-client-v0.98.c -o SyD -lssl -lcrypto -lgmp
 
 
 #Validation de la conformité mémoire
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.97.txt ./SyD -i
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.97.txt ./SyD -s
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.97.txt ./SyD -a ./Testv0.97.syd
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.97.txt ./SyD -c ./Testv0.97.syd log.debug
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.97.txt ./SyD -u ./Testv0.97.syd .
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.98.txt ./SyD -i
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.98.txt ./SyD -s
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.98.txt ./SyD -a ./Testv0.97.syd
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.98.txt ./SyD -c ./Testv0.97.syd log.debug
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.98.txt ./SyD -u ./Testv0.97.syd .
 */
 
 //------------------------------------------------------------------------------//
@@ -2410,7 +2410,7 @@ int SYD_OpenSYD() {
     memset(shared_key, '\0', sizeof(shared_key));
     int decrypted_sh_key_len = decrypt_AES_GCM_base64(SYD_PARAMS.A, SYD_PARAMS.g, hash_Key, iv, shared_key);
         if (decrypted_sh_key_len >= 0) {
-            if ((size_t)decrypted_x_len > sizeof(shared_key)) {
+            if ((size_t)decrypted_sh_key_len > sizeof(shared_key)) {
                 Write_log(LOG_FILE, "OpenSYD:20:UNCIPHER_FAIL Shared Key");
                 explicit_bzero(hash_Key, sizeof(hash_Key));
                 explicit_bzero(iv, sizeof(iv));
