@@ -170,6 +170,7 @@ char SERVER_SYD_UUID[40]="12345678-dead-face-beef-987654321000";
 char SYD_UUID[40]="12345678-dead-beef-face-987654321000";
 char CL_UUID[40]="11111111-dead-face-beef-987654321000";
 const char *REGEX_UUID = "^[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}$";
+const char *REGEX_FILENAME = "^[^[:cntrl:]\\\\/:*?\"<>|]+$";
 char CLIENTKEY[1024];
 char REQUESTKEY[1024];
 char INIT[64];
@@ -204,7 +205,7 @@ char TAG[64];
 //-----------------------------DEBUG-ON-----------------------------------------//
 //------------------------------------------------------------------------------// 
 // Activation du mode Debug Off=0 On=1 
-int DEBUG = 0;
+int DEBUG = 1;
 
 //------------------------------------------------------------------------------// 
 // Debug Fonction pour afficher les valeurs de configuration 
@@ -1905,8 +1906,13 @@ int Read_SYD_DATA(const char *filename) {
               snprintf(TAG, sizeof(TAG), "%s", jvals.entries[i].value);
               if (DEBUG == 1) {printf(" |Read_SYD_DATA| TAG: %s|\n", TAG);}   
         } else if (strcmp(jvals.entries[i].key, "FILENAME") == 0) {
-              snprintf(FILENAME, sizeof(FILENAME), "%s", jvals.entries[i].value);
-              if (DEBUG == 1) {printf(" |Read_SYD_DATA| FILENAME: %s|\n", FILENAME);}   
+              if (Match_regex(jvals.entries[i].value, REGEX_FILENAME) == 1) {
+                  snprintf(FILENAME, sizeof(FILENAME), "%s", jvals.entries[i].value);
+                  if (DEBUG == 1) {printf(" |Read_SYD_DATA| FILENAME: %s|\n", FILENAME);}
+              } else {
+              Free_json_values(&jvals);
+              return 11;
+              }
         }
         }
     
