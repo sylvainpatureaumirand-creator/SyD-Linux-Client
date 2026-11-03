@@ -1548,13 +1548,21 @@ int Read_reply() {
     // Dechiffement de X 
     
     int decrypted_len = decrypt_AES_GCM_base64(ciphertext_base64, tag, hash_Key, iv, decryptedtext);
+        explicit_bzero(hash_Key, sizeof(hash_Key));
+        //explicit_bzero(iv, sizeof(iv));
+        explicit_bzero(tag, sizeof(tag));
     if (decrypted_len >= 0) {
         decryptedtext[decrypted_len] = '\0';
     } else {
-        return 20;        
+        explicit_bzero(decryptedtext, sizeof(decryptedtext));
+        Free_SYD(&SYD_PARAMS);
+        return 20;
     }
     // Chiffrement de x pour stockage dans la BDD.syd locale
     if ( sha256(CLIENTKEY, hash_Key) != 0) {
+      explicit_bzero(CLIENTKEY, sizeof(CLIENTKEY));
+      explicit_bzero(hash_Key, sizeof(hash_Key));
+      Free_SYD(&SYD_PARAMS);
       return 14;
         }
     char *encrypted_base64 = encrypt_AES_GCM_base64(decryptedtext, strlen((char *)decryptedtext), hash_Key, iv, tag, sizeof(tag));
@@ -1570,7 +1578,7 @@ int Read_reply() {
     explicit_bzero(hash_Key, sizeof(hash_Key));
     explicit_bzero(iv, sizeof(iv));
     explicit_bzero(tag, sizeof(tag));
-    
+    free(encrypted_base64);
     Free_json_values(&jvals);
     return 0;
 }
@@ -1912,7 +1920,7 @@ int Read_SYD_DATA(const char *filename) {
               } else {
               Free_json_values(&jvals);
               return 11;
-              }
+              }   
         }
         }
     
@@ -2023,8 +2031,10 @@ int SYD_EnrollClient() {
         Copy_json_rply_to_char();
         
     // Lecture et attribution des valeurs à la structure
-        Read_reply();
-    
+        int ret_rrply = Read_reply();
+            if ( ret_rrply != 0) {
+           return ret_rrply;
+        }
     // Effacement des chaines  
         explicit_bzero(HTTP_RESPONSE, sizeof(HTTP_RESPONSE));
         explicit_bzero(JSON_RESPONSE, sizeof(JSON_RESPONSE));
@@ -2329,10 +2339,14 @@ int SYD_OpenSYD() {
         
         int decrypted_x_len = decrypt_AES_GCM_base64(SYD_PARAMS.x, tag, hash_Key, iv, decrypted_x);
         if (decrypted_x_len >= 0) {
+          if (decrypted_x_len > SIZE_BUFFER) {
+                  return 20;
+              } else {       
             decrypted_x[decrypted_x_len] = '\0';
-            if (DEBUG == 1) {
-                printf("------------------------------------------------------------------\n");
-                printf(" |OpenSYD| CL x : %s\n", decrypted_x);
+                if (DEBUG == 1) {
+                    printf("------------------------------------------------------------------\n");
+                    printf(" |OpenSYD| CL x : %s\n", decrypted_x);
+                }
             }
 
         } else {
@@ -2367,6 +2381,7 @@ int SYD_OpenSYD() {
     }
     int ret_calc_KBx = Clef_KBx(&DH_PARAMS);
     if ( ret_calc_KBx != 0) {  
+          Free_dh_parameters(&DH_PARAMS);
           return 11;
         } 
 
@@ -2376,6 +2391,8 @@ int SYD_OpenSYD() {
     memset(hash_Key, '\0', sizeof(hash_Key));
         if ( sha256(temp, hash_Key) != 0) {
           Write_log(LOG_FILE, "SP:14:HASH_CORRUPTION");  
+          Free_dh_parameters(&DH_PARAMS);
+          explicit_bzero(temp, sizeof(temp));  
           return 14;
         }
     // Effacement des mpz
@@ -2393,11 +2410,21 @@ int SYD_OpenSYD() {
     memset(shared_key, '\0', sizeof(shared_key));
     int decrypted_sh_key_len = decrypt_AES_GCM_base64(SYD_PARAMS.A, SYD_PARAMS.g, hash_Key, iv, shared_key);
         if (decrypted_sh_key_len >= 0) {
+            if ((size_t)decrypted_x_len > sizeof(shared_key)) {
+                Write_log(LOG_FILE, "OpenSYD:20:UNCIPHER_FAIL Shared Key");
+                explicit_bzero(hash_Key, sizeof(hash_Key));
+                explicit_bzero(iv, sizeof(iv));
+                explicit_bzero(shared_key, sizeof(shared_key));
+                return 20;
+            } else {
             shared_key[decrypted_sh_key_len] = '\0';
             if (DEBUG == 1){printf("Shared Key %s\n",(unsigned char *)shared_key);}
+            }
         } else {
             Write_log(LOG_FILE, "OpenSYD:20:UNCIPHER_FAIL Shared Key");
-            printf("Erreur Shared Key\n");
+            explicit_bzero(hash_Key, sizeof(hash_Key));
+            explicit_bzero(iv, sizeof(iv));
+            explicit_bzero(shared_key, sizeof(shared_key));
             return 20;
         }
     // Effacement de hash_key et iv
@@ -2406,7 +2433,6 @@ int SYD_OpenSYD() {
     
     // -----------------------------------------------------------------------------
     // Partie de la fonction qui permet de traiter les données chiffrées dans le SYD
-
     // Lecture de DATA (char en base64)
     if (DEBUG == 1) { 
         printf("------------------------------------------------------------------\n");
@@ -2536,7 +2562,6 @@ int SYD_OpenSYD() {
     free(DATA);
     DATA = NULL;
     Free_SYD(&SYD_PARAMS);
-
     return 0;
 }
 
@@ -2598,12 +2623,15 @@ int SYD_CloseSYD() {
     snprintf(path_file_client, sizeof(path_file_client), "%s%s", CONFIG_PATH, CONFIG_FILE_C);
     if (Read_config_client(path_file_client) != 0) {
         Write_log(LOG_FILE, "CloseSYD:10:READ Config client ERROR");
+        return 10;
     }
 
     sprintf(SYD_BDD, "%s%s.bdd", BDD_PATH, SYD_UUID);
 
     if (Read_BDD(SYD_BDD,SYD_PARAMS.state, CL_UUID, SYD_PARAMS.date, SYD_PARAMS.p, SYD_PARAMS.x, tag ) != 0) { // usage de g pour le tag et A pour la donnee chiffrée
         Write_log(LOG_FILE, "CloseSYD:10:READ Client BDD ERROR");
+        Free_SYD(&SYD_PARAMS);
+        return 10;
     }
     if (DEBUG == 1) {
         printf("------------------------------------------------------------------\n");
@@ -2619,12 +2647,18 @@ int SYD_CloseSYD() {
             if (DEBUG == 1) {
                 printf(" |CloseSYD| SHA256 : Echec du hash !\n");
             }
+            explicit_bzero(CLIENTKEY, sizeof(CLIENTKEY));
+            explicit_bzero(hash_Key, sizeof(hash_Key));
+            Free_SYD(&SYD_PARAMS);
             return 14;
         }
         
         //Creation de l'iv
         strncpy((char *)iv, SYD_PARAMS.p, 12);
-        
+        if (DEBUG == 1) {
+          printf("------------------------------------------------------------------\n");
+          printf(" |CloseSYD| iv : %s\n", iv);
+        }        
         int decrypted_x_len = decrypt_AES_GCM_base64(SYD_PARAMS.x, tag, hash_Key, iv, decrypted_x);
         if (decrypted_x_len >= 0) {
             decrypted_x[decrypted_x_len] = '\0';
@@ -2637,6 +2671,9 @@ int SYD_CloseSYD() {
             if (DEBUG == 1) {
                 printf(" |CloseSYD| Lecture de x : Echec du dechiffrement !\n");
             }
+            explicit_bzero(CLIENTKEY, sizeof(CLIENTKEY));
+            explicit_bzero(hash_Key, sizeof(hash_Key));
+            Free_SYD(&SYD_PARAMS);
             return 20;
         }
         // transfert de la clef dans la structure
@@ -2699,6 +2736,9 @@ int SYD_CloseSYD() {
             if (DEBUG == 1) {
                 printf(" |CloseSYD| Erreur Shared Key\n");
             }
+            explicit_bzero(hash_Key, sizeof(hash_Key));
+            explicit_bzero(shared_key, sizeof(shared_key));
+            Free_SYD(&SYD_PARAMS);
             return 20;
         }
 
@@ -2707,12 +2747,14 @@ int SYD_CloseSYD() {
     strncpy((char *)iv, SYD_UUID, 12);
     memset(hash_Key, '\0', sizeof(hash_Key));
     if ( sha256((char *)shared_key, hash_Key) != 0) {
-          Write_log(LOG_FILE, "CloseSYD:14:HASH_CORRUPTION");  
+          Write_log(LOG_FILE, "CloseSYD:14:HASH_CORRUPTION");
+          explicit_bzero(hash_Key, sizeof(hash_Key));
+          explicit_bzero(shared_key, sizeof(shared_key));
+          Free_SYD(&SYD_PARAMS);   
           return 14;
     } 
     // Effacement de la clef partagée
-    memset(shared_key, '\0', sizeof(shared_key));
-    explicit_bzero(shared_key, sizeof(shared_key)); // au cas ou...
+    explicit_bzero(shared_key, sizeof(shared_key)); 
     
 
     if (DEBUG == 1) {
@@ -2891,5 +2933,4 @@ int main(int argc, char *argv[]) {
    explicit_bzero(REQUESTKEY, sizeof(REQUESTKEY));
   return 0;  
 }
-
 
