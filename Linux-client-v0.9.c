@@ -32,18 +32,18 @@ echo "{ \n \"uuid\":\"853896a6-5ddb-4d0b-9516-52fc46cbe9b6\",\n  \"IP\":\"82.67.
 echo "{ \n \"uuid\":\"\",\n  \"IP\":\"82.67.97.63\",\n  \"PORT\":\"443\",}"  ./conf/ServerProvider.cfg 
 
 #Compilation
-gcc -Wall -Wextra -Werror -Wformat -Wformat-security -fstack-protector-strong -fPIE -D_FORTIFY_SOURCE=2 Linux-client-v0.98.c -o SyD -lssl -lcrypto -lgmp 
+gcc -Wall -Wextra -Werror -Wformat -Wformat-security -fstack-protector-strong -fPIE -D_FORTIFY_SOURCE=2 Linux-client-v0.99.c -o SyD -lssl -lcrypto -lgmp 
 
 Gestion de la mémoire avec Sanitize
 gcc -fsanitize=address,undefined -fno-omit-frame-pointer -g -Wall -Wextra -Werror -Wformat -Wformat-security -fstack-protector-strong -fPIE -D_FORTIFY_SOURCE=2 Linux-client-v0.98.c -o SyD -lssl -lcrypto -lgmp
 
 
 #Validation de la conformité mémoire
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.98.txt ./SyD -i
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.98.txt ./SyD -s
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.98.txt ./SyD -a ./Testv0.97.syd
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.98.txt ./SyD -c ./Testv0.97.syd log.debug
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.98.txt ./SyD -u ./Testv0.97.syd .
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.99.txt ./SyD -i
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.99.txt ./SyD -s
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.99.txt ./SyD -a ./Testv0.99.syd
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.99.txt ./SyD -c ./Testv0.99.syd log.debug
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.99.txt ./SyD -u ./Testv0.99.syd .
 */
 
 //------------------------------------------------------------------------------//
@@ -60,6 +60,7 @@ valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-fi
 #include <openssl/evp.h>
 #include <openssl/sha.h>
 #include <openssl/ssl.h>
+#include <openssl/rand.h>
 #include <gmp.h>
 #include <time.h>
 
@@ -198,7 +199,7 @@ char *DATA = NULL;
 long DATA_SIZE = 0;
 char *UNCIPHER_DATA = NULL;
 long UNCIPHER_DATA_SIZE = 0;
-char IV[13];
+char IV[17];
 char TAG[64];
 
 //------------------------------------------------------------------------------//
@@ -2495,19 +2496,21 @@ int SYD_OpenSYD() {
               return 12;
           }
           
-          // mise en forme de l'IV
-          unsigned char tmpiv[13];
-          memset(tmpiv, '\0', sizeof(tmpiv));
-          strncpy((char *)tmpiv, IV, 12);
-          
-          
-              // Déchiffrement de de DATA  
+          // mise en forme de l'IV xxx
+          int IV_length = 17;
+          unsigned char *tmpiv = base64_decode(IV, &IV_length);
+           
+              // Déchiffrement de DATA  
               int decrypted_DATA_len = decrypt_AES_GCM_base64(DATA, TAG, hash_Key, tmpiv, (unsigned char *)UNCIPHER_DATA);
+              
+          
+              
               if (decrypted_DATA_len >= 0) {
                   // Effacement des clefs
                   explicit_bzero(hash_Key, sizeof(hash_Key));
                   explicit_bzero(IV, sizeof(IV));
-                  explicit_bzero(tmpiv, sizeof(tmpiv));
+                  free(tmpiv);
+                  tmpiv = NULL;
                   free(DATA);
                   DATA = NULL;
 
@@ -2525,6 +2528,8 @@ int SYD_OpenSYD() {
                   UNCIPHER_DATA = NULL;
                   free(DATA);
                   DATA = NULL;
+                  free(tmpiv);
+                  tmpiv = NULL;
                   return 20;
               }
        
@@ -2767,19 +2772,26 @@ int SYD_CloseSYD() {
         unsigned char tmpiv[12];
         memset(tmpiv, '\0', sizeof(tmpiv));
 
-/*   xxx Modification a faire pour avoir un IV robuste meme si pas fondamentalement utile vu que l'IV est a usage unique et retiré systématiquement
 
-      if (RAND_bytes(iv, sizeof(iv)) != 1) {
-      return ERROR;
+      // ajout de #include <openssl/rand.h>
+      if (RAND_bytes(tmpiv, sizeof(tmpiv)) != 1) {
+          explicit_bzero(hash_Key, sizeof(hash_Key));
+          explicit_bzero(shared_key, sizeof(shared_key));
+          Free_SYD(&SYD_PARAMS); 
+          return 14;
       }
-      Transformation en B64
-      encode_base64(tmpiv, sizeof(tmpiv), IV, sizeof(12)); 
       
-      et changer à la lecture  ajouter le decodage de la la B64:
-      decode_base64(iv_b64, iv, sizeof(iv));                     
-*/      
-        Generation_chaine(IV, 12); // Creation d'une chaine avec aléa 
-        strncpy((char *)tmpiv, IV, 12);
+      char *iv_base64 = base64_encode(tmpiv, sizeof(tmpiv));
+      if (iv_base64 == NULL) {
+          explicit_bzero(hash_Key, sizeof(hash_Key));
+          explicit_bzero(shared_key, sizeof(shared_key));
+          Free_SYD(&SYD_PARAMS); 
+          return 12;
+      }
+      
+      snprintf(IV, sizeof(IV), "%s", iv_base64);
+      free(iv_base64);
+      iv_base64 = NULL;
 
         char *encrypted_base64 = encrypt_file_AES_GCM_base64(FILENAME, hash_Key, tmpiv, TAG);
         // Effacement IV et hash_key
