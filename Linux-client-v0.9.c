@@ -32,18 +32,18 @@ echo "{ \n \"uuid\":\"853896a6-5ddb-4d0b-9516-52fc46cbe9b6\",\n  \"IP\":\"82.67.
 echo "{ \n \"uuid\":\"\",\n  \"IP\":\"82.67.97.63\",\n  \"PORT\":\"443\",}"  ./conf/ServerProvider.cfg 
 
 #Compilation
-gcc -Wall -Wextra -Werror -Wformat -Wformat-security -fstack-protector-strong -fPIE -D_FORTIFY_SOURCE=2 Linux-client-v0.99.c -o SyD -lssl -lcrypto -lgmp 
+gcc -Wall -Wextra -Werror -Wformat -Wformat-security -fstack-protector-strong -fPIE -D_FORTIFY_SOURCE=2 Linux-client-v0.9.c -o SyD -lssl -lcrypto -lgmp 
 
 Gestion de la mémoire avec Sanitize
-gcc -fsanitize=address,undefined -fno-omit-frame-pointer -g -Wall -Wextra -Werror -Wformat -Wformat-security -fstack-protector-strong -fPIE -D_FORTIFY_SOURCE=2 Linux-client-v0.98.c -o SyD -lssl -lcrypto -lgmp
+gcc -fsanitize=address,undefined -fno-omit-frame-pointer -g -Wall -Wextra -Werror -Wformat -Wformat-security -fstack-protector-strong -fPIE -D_FORTIFY_SOURCE=2 Linux-client-v0.9.c -o SyD -lssl -lcrypto -lgmp
 
 
 #Validation de la conformité mémoire
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.99.txt ./SyD -i
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.99.txt ./SyD -s
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.99.txt ./SyD -a ./Testv0.99.syd
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.99.txt ./SyD -c ./Testv0.99.syd log.debug
-valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.99.txt ./SyD -u ./Testv0.99.syd .
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.9.txt ./SyD -i
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.9.txt ./SyD -s
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.9.txt ./SyD -a ./Testv0.99.syd
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.9.txt ./SyD -c ./Testv0.99.syd log.debug
+valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes -v --log-file=./Valgrind-Linux-client-c-v0.9.txt ./SyD -u ./Testv0.99.syd .
 */
 
 //------------------------------------------------------------------------------//
