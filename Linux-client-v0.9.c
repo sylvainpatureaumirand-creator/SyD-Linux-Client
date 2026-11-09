@@ -26,10 +26,10 @@ sudo apt install build-essential libssl-dev libgmp-dev
 mkdir ./conf/ ./bdd
 
 #Créer un fichier Client.cfg avec une balise SAFE qui contient une chaine de caractère qui sert a chiffrer la BDD locale
-echo "{ \n \"SAFE\":\"Tirelipimponsurlechihuahua!!!\" \n}"  ./conf/Client.cfg 
+echo "{ \n \"SAFE\":\"Tirelipimponsurlechihuahua!!!\" \n}" > ./conf/Client.cfg 
 #Créer les fichiers de configuration ServerSYD.cfg ServerProvider.cfg dans lequel la balise uuid, IP et PORT sont présent (uuid optionnel pour le SP)
-echo "{ \n \"uuid\":\"853896a6-5ddb-4d0b-9516-52fc46cbe9b6\",\n  \"IP\":\"82.67.97.63\",\n  \"PORT\":\"5110\",}"  ./conf/ServerSYD.cfg 
-echo "{ \n \"uuid\":\"\",\n  \"IP\":\"82.67.97.63\",\n  \"PORT\":\"5120\",}"  ./conf/ServerProvider.cfg 
+echo "{ \n \"uuid\":\"853896a6-5ddb-4d0b-9516-52fc46cbe9b6\",\n  \"IP\":\"82.67.97.63\",\n  \"PORT\":\"5110\",}" > ./conf/ServerSYD.cfg 
+echo "{ \n \"uuid\":\"\",\n  \"IP\":\"82.67.97.63\",\n  \"PORT\":\"5120\",}" > ./conf/ServerProvider.cfg 
 
 # Ajouter le certificat de la RootCA
 cat > "./conf/SYD-rootCA-PP.pem" <<EOF
