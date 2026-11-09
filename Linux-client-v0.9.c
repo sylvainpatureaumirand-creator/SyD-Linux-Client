@@ -28,8 +28,26 @@ mkdir ./conf/ ./bdd
 #Créer un fichier Client.cfg avec une balise SAFE qui contient une chaine de caractère qui sert a chiffrer la BDD locale
 echo "{ \n \"SAFE\":\"Tirelipimponsurlechihuahua!!!\" \n}"  ./conf/Client.cfg 
 #Créer les fichiers de configuration ServerSYD.cfg ServerProvider.cfg dans lequel la balise uuid, IP et PORT sont présent (uuid optionnel pour le SP)
-echo "{ \n \"uuid\":\"853896a6-5ddb-4d0b-9516-52fc46cbe9b6\",\n  \"IP\":\"82.67.97.63\",\n  \"PORT\":\"443\",}"  ./conf/ServerSYD.cfg 
-echo "{ \n \"uuid\":\"\",\n  \"IP\":\"82.67.97.63\",\n  \"PORT\":\"443\",}"  ./conf/ServerProvider.cfg 
+echo "{ \n \"uuid\":\"853896a6-5ddb-4d0b-9516-52fc46cbe9b6\",\n  \"IP\":\"82.67.97.63\",\n  \"PORT\":\"5110\",}"  ./conf/ServerSYD.cfg 
+echo "{ \n \"uuid\":\"\",\n  \"IP\":\"82.67.97.63\",\n  \"PORT\":\"5120\",}"  ./conf/ServerProvider.cfg 
+
+# Ajouter le certificat de la RootCA
+cat > "./conf/SYD-rootCA-PP.pem" <<EOF
+-----BEGIN CERTIFICATE-----
+MIICMTCCAdegAwIBAgIUJ1A2cXjdqBUNTHKG1OPDACByzXMwCgYIKoZIzj0EAwIw
+bjELMAkGA1UEBhMCRlIxFjAUBgNVBAgMDUlsZS1kZS1GcmFuY2UxDjAMBgNVBAcM
+BVBhcmlzMRAwDgYDVQQKDAdTeVBhTWlyMQ8wDQYDVQQLDAZTWUQtUFAxFDASBgNV
+BAMMC1NZRC1Sb290LUNBMB4XDTI1MDMyNTA4NTc0MVoXDTM1MDMyMzA4NTc0MVow
+bjELMAkGA1UEBhMCRlIxFjAUBgNVBAgMDUlsZS1kZS1GcmFuY2UxDjAMBgNVBAcM
+BVBhcmlzMRAwDgYDVQQKDAdTeVBhTWlyMQ8wDQYDVQQLDAZTWUQtUFAxFDASBgNV
+BAMMC1NZRC1Sb290LUNBMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE4pF64CJC
+7pFIFEpZtP16s2Ut4eWJJkDsFYAUJ+uYBjLXiHb0Lr7FIUn32MhYJ3YjbGAaxZL1
+AUbUqtmLppQ8FaNTMFEwHQYDVR0OBBYEFL909BhGd2Cispy1erFElYb7LyKIMB8G
+A1UdIwQYMBaAFL909BhGd2Cispy1erFElYb7LyKIMA8GA1UdEwEB/wQFMAMBAf8w
+CgYIKoZIzj0EAwIDSAAwRQIgNyfd8wqm9GxRY5gXA7cOjKMtNcv/7LmOr/hrO2w3
+WXECIQCXbmBOql9BeccM6JJ+Fy45/6IG/quXXP1aRq2ZWm7MGw==
+-----END CERTIFICATE-----
+EOF
 
 #Compilation
 gcc -Wall -Wextra -Werror -Wformat -Wformat-security -fstack-protector-strong -fPIE -D_FORTIFY_SOURCE=2 Linux-client-v0.9.c -o SyD -lssl -lcrypto -lgmp 
